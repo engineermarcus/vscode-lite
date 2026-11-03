@@ -26,9 +26,23 @@ const okKey = k => { const a = Buffer.from(String(k || '')), b = Buffer.from(KEY
 app.use((req, res, next) => okKey(req.get('x-session-key') || req.query.k) ? next() : res.sendStatus(401));
 app.use(express.json({ limit: '100mb' }));
 
-const safe = p => {
+const REAL_ROOT = fs.realpathSync(ROOT);
+const inside = r => r === REAL_ROOT || r.startsWith(REAL_ROOT + path.sep);
+const safe = (p, leaf) => {
   const f = path.resolve(ROOT, String(p || '').replace(/^\/+/, ''));
   if (f !== ROOT && !f.startsWith(ROOT + path.sep)) throw new Error('bad path');
+  // resolve symlinks on the deepest existing ancestor; symlinks pointing outside ROOT are rejected
+  let probe = leaf ? path.dirname(f) : f, real;
+  for (;;) {
+    try { real = fs.realpathSync(probe); break; }
+    catch {
+      let link = false;
+      try { link = fs.lstatSync(probe).isSymbolicLink(); } catch {}
+      if (link) throw new Error('bad path');
+      const up = path.dirname(probe); if (up === probe) throw new Error('bad path'); probe = up;
+    }
+  }
+  if (!inside(real)) throw new Error('bad path');
   return f;
 };
 const rel = f => path.relative(ROOT, f).split(path.sep).join('/');
@@ -82,12 +96,19 @@ app.post('/api/file', h(async (req, res) => {
   res.json({ ok: true });
 }));
 
-app.get('/api/raw', h((req, res) => res.sendFile(safe(req.query.path))));
+app.get('/api/raw', h((req, res) => {
+  const f = safe(req.query.path);
+  res.set('X-Content-Type-Options', 'nosniff');
+  if (/\.(svg|html?|xml|xhtml)$/i.test(f)) res.set('Content-Security-Policy', 'sandbox');
+  res.sendFile(f);
+}));
 
 app.post('/api/rename', h(async (req, res) => {
   const to = safe(req.body.newPath);
   await fs.promises.mkdir(path.dirname(to), { recursive: true });
-  await fs.promises.rename(safe(req.body.oldPath), to);
+  const from = safe(req.body.oldPath, true);
+  if (from === ROOT || to === ROOT) throw new Error('bad path');
+  await fs.promises.rename(from, to);
   res.json({ ok: true });
 }));
 
@@ -102,7 +123,9 @@ app.post('/api/duplicate', h(async (req, res) => {
 }));
 
 app.post('/api/delete', h(async (req, res) => {
-  await fs.promises.rm(safe(req.body.path), { recursive: true, force: true });
+  const f = safe(req.body.path, true);
+  if (f === ROOT) throw new Error('refusing to delete workspace root');
+  await fs.promises.rm(f, { recursive: true, force: true });
   res.json({ ok: true });
 }));
 
@@ -225,7 +248,10 @@ app.get('/api/git/branches', h(async (req, res) => {            // GUESS: array 
   res.json({ branches: out.split('\n').filter(Boolean) });
 }));
 app.post('/api/git/checkout', h(async (req, res) => {
-  await git('checkout', ...(req.body.create ? ['-b'] : []), req.body.branch);
+  const br = String(req.body.branch || '');
+  if (!/^[A-Za-z0-9._\/][A-Za-z0-9._\/-]*$/.test(br) || br.includes('..')) throw new Error('bad branch name');
+  if (req.body.create) await git('checkout', '-b', br);
+  else await git('checkout', br, '--');
   res.json({ ok: true });
 }));
 

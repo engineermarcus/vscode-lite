@@ -29,6 +29,9 @@ export async function bootApp() {
   // State
   let workspace = { path: "", name: "", gitBranch: "", isGit: false };
   let openTabs = []; // [{ path, name, dirty, gitStatus }]
+  window.addEventListener('beforeunload', (e) => {
+    if (openTabs.some(t => t.dirty)) { e.preventDefault(); e.returnValue = ''; }
+  });
   let activeTabPath = null;
   let fileTreeData = [];
   let allFilesList = []; // for Quick Open
