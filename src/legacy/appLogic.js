@@ -2358,3 +2358,16 @@ document.getElementById('btn-toggle-panel')?.addEventListener('click', (e) => {
   document.getElementById(showingTerminal ? 'btn-mobile-view-editor' : 'btn-mobile-view-terminal')?.click();
   document.getElementById('btn-toggle-panel')?.classList.toggle('active', showingTerminal === false);
 }, true);
+
+// ---- delegated mobile panel switch ----
+document.addEventListener('click', (e) => {
+  const icon = e.target.closest && e.target.closest('#btn-toggle-panel');
+  if (!icon) return;
+  const body = document.querySelector('.workbench-body');
+  if (window.innerWidth > 768 || !body || !body.classList.contains('mobile-swipe')) return;
+  e.stopImmediatePropagation();
+  e.preventDefault();
+  const showingTerminal = body.classList.contains('show-terminal');
+  document.getElementById(showingTerminal ? 'btn-mobile-view-editor' : 'btn-mobile-view-terminal')?.click();
+  icon.classList.toggle('active', !showingTerminal);
+}, true);
