@@ -73,6 +73,12 @@ jobs:
       - name: Build debug APK
         working-directory: android
         run: chmod +x gradlew && ./gradlew assembleDebug
+      - name: Verify APK signature
+        run: |
+          AS=$(ls $ANDROID_HOME/build-tools/*/apksigner | tail -1)
+          OUT=$("$AS" verify --verbose android/app/build/outputs/apk/debug/app-debug.apk)
+          echo "$OUT"
+          echo "$OUT" | grep -q "v2 scheme.*: true" || { echo "NOT v2 signed"; exit 1; }
       - name: Rename APK
         run: |
           mkdir -p out
