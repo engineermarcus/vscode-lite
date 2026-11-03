@@ -6,7 +6,16 @@ const WS_REPO = 'vscode-lite-workspace';
 const WF = 'backend.yml';
 const RE = /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/;
 
-const state = { http: '', ws: '', tunnel: false, owner: UPSTREAM_OWNER, repo: REPO };
+const state = { key: '', http: '', ws: '', tunnel: false, owner: UPSTREAM_OWNER, repo: REPO };
+let pendingKey = '';
+const _fetch = window.fetch.bind(window);
+window.fetch = (input, init = {}) => {
+  const url = typeof input === 'string' ? input : input?.url || '';
+  if (state.key && state.http && url.startsWith(state.http)) {
+    init = { ...init, headers: { ...Object.fromEntries(new Headers(init.headers || {})), 'x-session-key': state.key } };
+  }
+  return _fetch(input, init);
+};
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export function getTargetRepo() {
@@ -20,7 +29,7 @@ async function alive(u) {
   const c = new AbortController();
   const t = setTimeout(() => c.abort(), 4000);
   try {
-    const r = await fetch(u + '/api/workspace', { signal: c.signal, cache: 'no-store' });
+    const r = await fetch(u + '/api/workspace', { signal: c.signal, cache: 'no-store', headers: { 'x-session-key': pendingKey } });
     // Must return 200 OK without requiring an APP_TOKEN or returning 401
     return r.ok;
   } catch {
@@ -52,13 +61,17 @@ async function ghFetch(path, init = {}, owner = null, repo = null) {
  * 3. Fallback gist (for upstream owner)
  */
 async function fetchTunnelUrl(owner) {
+  pendingKey = '';
   if (!owner || !getToken()) return null;
   try {
     const r = await ghFetch('/contents/tunnel.json?ref=tunnel&t=' + Date.now(), { cache: 'no-store' }, owner, WS_REPO);
     if (!r.ok) return null;
     const j = await r.json();
-    const u = String(JSON.parse(atob(String(j.content || '').replace(/\s+/g, ''))).url || '').replace(/\/$/, '');
-    return RE.test(u) ? u : null;
+    const t = JSON.parse(atob(String(j.content || '').replace(/\s+/g, '')));
+    const u = String(t.url || '').replace(/\/$/, '');
+    if (!RE.test(u) || !/^[a-f0-9]{48}$/.test(String(t.key || ''))) return null;
+    pendingKey = t.key;
+    return u;
   } catch {
     return null;
   }
@@ -106,6 +119,7 @@ async function syncSecret(owner) {
 
 function apply(u, owner = UPSTREAM_OWNER) {
   state.http = u;
+  state.key = pendingKey;
   state.ws = u.replace(/^https:/, 'wss:');
   state.tunnel = true;
   state.owner = owner;
@@ -291,5 +305,5 @@ export async function ensureTunnel(onProgress) {
 }
 
 window.addEventListener('github-auth-change', () => {
-  if (!getToken()) { state.http = ''; state.ws = ''; state.tunnel = false; state.owner = ''; }
+  if (!getToken()) { state.http = ''; state.ws = ''; state.tunnel = false; state.owner = ''; state.key = ''; }
 });

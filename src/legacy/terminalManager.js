@@ -227,7 +227,7 @@ class TerminalManager {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       return `${protocol}//${window.location.host}`;
     })();
-    const wsUrl = `${wsBase.replace(/\/$/, "")}/ws/terminal`;
+    const wsUrl = `${wsBase.replace(/\/$/, "")}/ws/terminal?k=${encodeURIComponent(getBase().key || '')}`;
     const socket = new WebSocket(wsUrl);
     console.log('[term] ws', wsUrl, 'tunnel:', getBase().tunnel);
     socket.addEventListener('open', () => console.log('[term] open'));

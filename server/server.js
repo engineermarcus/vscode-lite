@@ -2,6 +2,7 @@ import express from 'express';
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { WebSocketServer } from 'ws';
 import pty from 'node-pty';
 import { execFile } from 'child_process';
@@ -14,11 +15,15 @@ const app = express();
 app.use(express.json({ limit: '100mb' }));
 app.use((req, res, next) => {
   res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Headers', 'Content-Type');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, X-Session-Key');
   res.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
+
+const KEY = process.env.SESSION_KEY || '';
+const okKey = k => { const a = Buffer.from(String(k || '')), b = Buffer.from(KEY); return KEY.length > 0 && a.length === b.length && crypto.timingSafeEqual(a, b); };
+app.use((req, res, next) => okKey(req.get('x-session-key') || req.query.k) ? next() : res.sendStatus(401));
 
 const safe = p => {
   const f = path.resolve(ROOT, String(p || '').replace(/^\/+/, ''));
@@ -226,12 +231,12 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 server.on('upgrade', (req, sock, head) => {
   const u = new URL(req.url, 'http://x');
-  if (u.pathname !== '/ws/terminal') return sock.destroy();
+  if (u.pathname !== '/ws/terminal' || !okKey(u.searchParams.get('k'))) return sock.destroy();
   wss.handleUpgrade(req, sock, head, ws => wss.emit('connection', ws));
 });
 wss.on('connection', ws => {
   const shell = process.env.SHELL || 'bash';
-  const p = pty.spawn(shell, [], { name: 'xterm-256color', cols: 80, rows: 24, cwd: ROOT, env: process.env });
+  const p = pty.spawn(shell, [], { name: 'xterm-256color', cols: 80, rows: 24, cwd: ROOT, env: (({ SESSION_KEY, ...e }) => e)(process.env) });
   const send = o => ws.readyState === 1 && ws.send(JSON.stringify(o));
   send({ type: 'session', shell: path.basename(shell) });
   p.onData(d => send({ type: 'output', data: d }));

@@ -21,6 +21,8 @@ jobs:
       - name: Start backend and Cloudflare tunnel
         run: |
           [ -n "$WS_TOKEN" ] || { echo "missing WS_TOKEN"; exit 1; }
+          SESSION_KEY=$(openssl rand -hex 24)
+          echo "::add-mask::$SESSION_KEY"
           B64=$(printf 'x-access-token:%s' "$WS_TOKEN" | base64 -w0)
           echo "::add-mask::$B64"
           gitauth() {
@@ -41,7 +43,7 @@ jobs:
           git push -q -u origin main || echo "WARN: workspace push failed"
           cd "$GITHUB_WORKSPACE"
           nohup bash -c 'while true; do sleep 60; cd "$HOME/workspace" || continue; git add -A; git diff --cached --quiet || { git commit -qm autosave && git push -q origin main; }; done' > autosave.log 2>&1 &
-          WORKSPACE="$HOME/workspace" nohup env -u WS_TOKEN node server/server.js > server.log 2>&1 &
+          WORKSPACE="$HOME/workspace" SESSION_KEY="$SESSION_KEY" nohup env -u WS_TOKEN node server/server.js > server.log 2>&1 &
           sleep 3
           curl -fsSL -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
           chmod +x cloudflared
@@ -63,7 +65,7 @@ jobs:
           [ "$OK" = 1 ] || { echo "unreachable"; exit 1; }
           mkdir -p "$HOME/tun" && cd "$HOME/tun"
           git init -q -b tunnel; gitauth
-          echo "{\"url\":\"$URL\",\"ts\":$(date +%s)}" > tunnel.json
+          echo "{\"url\":\"$URL\",\"key\":\"$SESSION_KEY\",\"ts\":$(date +%s)}" > tunnel.json
           git add tunnel.json; git commit -qm tunnel
           git push -q -u origin tunnel --force
           echo "PUBLISHED"
