@@ -1,3 +1,10 @@
+const _esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const _safeUrl = (u) => {
+  const t = String(u).replace(/&amp;/g, '&').replace(/[\u0000-\u0020]/g, '');
+  const m = t.match(/^([a-z][a-z0-9+.-]*):/i);
+  if (m && ['http', 'https', 'mailto'].indexOf(m[1].toLowerCase()) === -1) return '#';
+  return _esc(t);
+};
 import { getBase } from './tunnel.js';
 import * as monaco from 'monaco-editor';
 
@@ -12,6 +19,7 @@ class EditorManager {
     this.markdownBody = document.getElementById("markdown-preview-body");
     this.htmlContainer = document.getElementById("html-preview-container");
     this.htmlIframe = document.getElementById("html-preview-iframe");
+    if (this.htmlIframe) this.htmlIframe.setAttribute("sandbox", "allow-scripts");
 
     this.editor = null;
     this.diffEditor = null;
@@ -468,6 +476,8 @@ class EditorManager {
       return `@@@INLINECODE_${idx}@@@`;
     });
 
+    html = _esc(html);
+
     // Headings
     html = html.replace(/^######\s+(.+)$/gm, '<h6>$1</h6>');
     html = html.replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>');
@@ -477,19 +487,19 @@ class EditorManager {
     html = html.replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
 
     // Blockquotes
-    html = html.replace(/^\>\s+(.+)$/gm, '<blockquote>$1</blockquote>');
+    html = html.replace(/^&gt;\s+(.+)$/gm, '<blockquote>$1</blockquote>');
 
     // Horizontal Rule
     html = html.replace(/^---$/gm, '<hr>');
 
     // Bold, Italic, Strikethrough
     html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/\*([^*]+)*/g, '<em>$1</em>');
+    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
     html = html.replace(/~~([^~]+)~~/g, '<del>$1</del>');
 
     // Links & Images
-    html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%; border-radius:4px;">');
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    html = html.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, a, u) => '<img src="' + _safeUrl(u) + '" alt="' + a + '" style="max-width:100%; border-radius:4px;">');
+    html = html.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) => '<a href="' + _safeUrl(u) + '" target="_blank" rel="noopener noreferrer">' + t + '</a>');
 
     // Tables
     html = html.replace(/((?:\|[^\n]+\|\r?\n)+)/g, (match) => {

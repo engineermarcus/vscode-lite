@@ -329,7 +329,7 @@ export async function bootApp() {
   function updateBreadcrumb(name, filePath) {
     const item = document.getElementById("breadcrumb-current-file");
     if (!item) return;
-    item.innerHTML = `${getFileIconHtml(name, false)} <span id="breadcrumb-text">${filePath}</span>`;
+    item.innerHTML = `${getFileIconHtml(name, false)} <span id="breadcrumb-text">${escapeHtml(filePath)}</span>`;
   }
 
   function closeTab(filePath, e) {
@@ -715,7 +715,7 @@ export async function bootApp() {
           <i class="codicon codicon-git-commit" style="margin-right:6px; color:#3794ff;"></i>
           <div style="display:flex; flex-direction:column; overflow:hidden; flex:1;">
             <span style="font-weight:500; font-size:12px;">${escapeHtml(c.subject)}</span>
-            <span style="color:var(--text-muted); font-size:10px;">${c.hash} • ${c.date} by ${c.author}</span>
+            <span style="color:var(--text-muted); font-size:10px;">${escapeHtml(c.hash)} • ${escapeHtml(c.date)} by ${escapeHtml(c.author)}</span>
           </div>
         `;
         timelineContent.appendChild(item);
@@ -752,9 +752,9 @@ export async function bootApp() {
           const tr = document.createElement("tr");
           tr.style.borderBottom = "1px solid var(--border-subtle)";
           tr.innerHTML = `
-            <td style="padding:6px 8px;"><span class="badge" style="background:#0e639c;">${p.port}</span></td>
-            <td style="padding:6px 8px; color:var(--text-muted);">${p.protocol}</td>
-            <td style="padding:6px 8px;"><a href="${p.address}" target="_blank" style="color:var(--accent-color); text-decoration:none;">${p.address}</a></td>
+            <td style="padding:6px 8px;"><span class="badge" style="background:#0e639c;">${escapeHtml(String(p.port))}</span></td>
+            <td style="padding:6px 8px; color:var(--text-muted);">${escapeHtml(String(p.protocol))}</td>
+            <td style="padding:6px 8px;"><a href="${/^https?:\/\//i.test(p.address) ? escapeHtml(p.address) : '#'}" target="_blank" rel="noopener noreferrer" style="color:var(--accent-color); text-decoration:none;">${escapeHtml(p.address)}</a></td>
           `;
           tbody.appendChild(tr);
         });
@@ -792,8 +792,8 @@ export async function bootApp() {
         item.innerHTML = `
           <i class="codicon ${r.icon.startsWith("icon-") ? "" : r.icon}" style="font-size:22px; color:#3794ff;"></i>
           <div>
-            <div style="font-weight:600; font-size:12px;">${r.name}</div>
-            <div style="color:var(--text-muted); font-size:11px;">${r.desc}</div>
+            <div style="font-weight:600; font-size:12px;">${escapeHtml(r.name)}</div>
+            <div style="color:var(--text-muted); font-size:11px;">${escapeHtml(r.desc)}</div>
           </div>
         `;
         container.appendChild(item);
@@ -987,7 +987,7 @@ export async function bootApp() {
     left.style.alignItems = "center";
     left.style.gap = "6px";
     left.style.overflow = "hidden";
-    left.innerHTML = `${getFileIconHtml(file, false)} <span style="white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${file}</span>`;
+    left.innerHTML = `${getFileIconHtml(file, false)} <span style="white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${escapeHtml(file)}</span>`;
 
     const right = document.createElement("div");
     right.style.display = "flex";
