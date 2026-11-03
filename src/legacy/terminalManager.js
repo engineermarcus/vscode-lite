@@ -227,13 +227,19 @@ class TerminalManager {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       return `${protocol}//${window.location.host}`;
     })();
-    const wsUrl = `${wsBase.replace(/\/$/, "")}/ws/terminal?k=${encodeURIComponent(getBase().key || '')}`;
+    const wsUrl = `${wsBase.replace(/\/$/, "")}/ws/terminal?k=${encodeURIComponent(getBase().key || '')}&s=${encodeURIComponent(this.clientId() + '-' + id)}`;
     const socket = new WebSocket(wsUrl);
-    console.log('[term] ws', wsUrl, 'tunnel:', getBase().tunnel);
+    console.log('[term] ws', new URL(wsUrl).origin, 'tunnel:', getBase().tunnel);
     socket.addEventListener('open', () => console.log('[term] open'));
     socket.addEventListener('close', (e) => console.log('[term] close', e.code));
     socket.addEventListener('error', () => console.log('[term] error'));
     this.sockets.set(id, socket);
+    socket.addEventListener('close', () => {
+      if (this.terminals.get(id) !== term || !getBase().tunnel || (this._exited && this._exited.has(id))) return;
+      setTimeout(() => {
+        if (this.terminals.get(id) === term && getBase().tunnel && this.sockets.get(id) === socket) this.openSocket(id, term, fitAddon);
+      }, 2000);
+    });
 
     socket.onopen = () => {
       setTimeout(() => {
@@ -249,11 +255,13 @@ class TerminalManager {
         if (msg.type === "output") {
           term.write(msg.data);
         } else if (msg.type === "session") {
+          if (msg.replay) term.reset();
           const shellName = msg.shell || "bash";
           this.terminalNames.set(id, `${this.counter}: ${shellName}`);
           this.updateTerminalTabName(id, shellName);
           this.renderTabs();
         } else if (msg.type === "exit") {
+          (this._exited ||= new Set()).add(id);
           term.write("\r\n\x1b[90m[Process completed]\x1b[0m\r\n");
         }
       } catch (e) {
@@ -273,6 +281,14 @@ class TerminalManager {
       }
     });
 
+  }
+
+  clientId() {
+    try {
+      let c = localStorage.getItem('term_client');
+      if (!c) { c = Math.random().toString(36).slice(2, 12); localStorage.setItem('term_client', c); }
+      return c;
+    } catch { return 'anon'; }
   }
 
   logLine(msg, level) {

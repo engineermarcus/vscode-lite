@@ -24,12 +24,12 @@ export function getTargetRepo() {
   return { owner, repo: REPO };
 }
 
-async function alive(u) {
+async function alive(u, k = pendingKey) {
   if (!u || !RE.test(u)) return false;
   const c = new AbortController();
   const t = setTimeout(() => c.abort(), 4000);
   try {
-    const r = await fetch(u + '/api/workspace', { signal: c.signal, cache: 'no-store', headers: { 'x-session-key': pendingKey } });
+    const r = await fetch(u + '/api/workspace', { signal: c.signal, cache: 'no-store', headers: { 'x-session-key': k } });
     // Must return 200 OK without requiring an APP_TOKEN or returning 401
     return r.ok;
   } catch {
@@ -117,9 +117,43 @@ async function syncSecret(owner) {
   if (!r.ok) throw new Error('Could not store workspace token (' + r.status + ')');
 }
 
+let mon = null;
+const emit = (msg, level) => window.dispatchEvent(new CustomEvent('shell-log', { detail: { msg, level } }));
+
+function startMonitor() {
+  clearInterval(mon);
+  let miss = 0;
+  let last = 'OK';
+  mon = setInterval(async () => {
+    if (!state.tunnel) return clearInterval(mon);
+    if (!(await alive(state.http, state.key))) {
+      if (++miss < 3) return;
+      clearInterval(mon);
+      state.http = '';
+      state.ws = '';
+      state.tunnel = false;
+      state.key = '';
+      emit('Shell stopped (runner ended or 5h limit). Tap Connect shell.', 'error');
+      window.dispatchEvent(new Event('tunnel-lost'));
+      return;
+    }
+    miss = 0;
+    try {
+      const j = await (await fetch(state.http + '/api/sync-status', { cache: 'no-store' })).json();
+      const st = String(j.status || 'OK');
+      if (st !== last) {
+        if (st.startsWith('FAIL')) emit('Autosave failed: ' + st.slice(5), 'error');
+        else if (last.startsWith('FAIL')) emit('Autosave recovered.', 'ok');
+        last = st;
+      }
+    } catch {}
+  }, 30000);
+}
+
 function apply(u, owner = UPSTREAM_OWNER) {
   state.http = u;
   state.key = pendingKey;
+  startMonitor();
   state.ws = u.replace(/^https:/, 'wss:');
   state.tunnel = true;
   state.owner = owner;
@@ -171,17 +205,6 @@ async function ensureFork(userLogin, onProgress) {
   onProgress('Checking repository in your account...');
   const check = await fetch(repoUrl, { headers: H });
   if (check.ok) {
-    const info = await check.json().catch(() => ({}));
-    if (info.fork) {
-      onProgress('Syncing your fork...');
-      try {
-        await fetch(repoUrl + '/merge-upstream', {
-          method: 'POST',
-          headers: H,
-          body: JSON.stringify({ branch: 'main' }),
-        });
-      } catch {}
-    }
     return true;
   }
 
@@ -255,6 +278,102 @@ async function dispatchWorkflow(owner, repo, onProgress) {
   throw new Error(last);
 }
 
+const GH = 'https://api.github.com';
+const WF_BLOB = '615b293f701d57ca5c353a9bc137bc66b050a59e';
+
+async function activeRuns(owner) {
+  const r = await fetch(`${GH}/repos/${owner}/${REPO}/actions/workflows/${WF}/runs?per_page=20`, { headers: hdr(), cache: 'no-store' });
+  if (!r.ok) return [];
+  return ((await r.json()).workflow_runs || []).filter((x) => x.status !== 'completed');
+}
+
+async function cancelRuns(owner) {
+  for (const x of await activeRuns(owner)) {
+    await fetch(`${GH}/repos/${owner}/${REPO}/actions/runs/${x.id}/cancel`, { method: 'POST', headers: hdr() });
+  }
+  for (let i = 0; i < 20; i++) {
+    if (!(await activeRuns(owner)).length) return;
+    await sleep(3000);
+  }
+}
+
+async function dropBranch(owner, b) {
+  const r = await fetch(`${GH}/repos/${owner}/${REPO}/git/refs/heads/${b}`, { method: 'DELETE', headers: hdr() });
+  return r.status === 204;
+}
+
+async function dropSecret(owner) {
+  try {
+    await fetch(`${GH}/repos/${owner}/${REPO}/actions/secrets/WS_TOKEN`, { method: 'DELETE', headers: hdr() });
+  } catch {}
+}
+
+async function stopLegacy(owner, onProgress) {
+  const r = await fetch(`${GH}/repos/${owner}/${REPO}/branches/tunnel`, { headers: hdr() });
+  if (!r.ok) return;
+  onProgress('Old public shell found. Stopping it...');
+  await cancelRuns(owner);
+  await dropBranch(owner, 'tunnel');
+  onProgress('Removed old public tunnel branch.');
+}
+
+async function dropLegacyWorkspace(owner, onProgress) {
+  const b = await fetch(`${GH}/repos/${owner}/${REPO}/branches/workspace`, { headers: hdr() });
+  if (!b.ok) return;
+  const sha = (await b.json()).commit?.sha;
+  const c = sha && (await fetch(`${GH}/repos/${owner}/${WS_REPO}/commits/${sha}`, { headers: hdr() }));
+  if (c && c.ok && (await dropBranch(owner, 'workspace'))) {
+    onProgress('Removed old public workspace branch (copied to your private repo).');
+  } else {
+    onProgress('Old public workspace branch still exists. Copy what you need, then delete it.');
+  }
+}
+
+async function verifyWorkflow(owner, onProgress) {
+  const url = `${GH}/repos/${owner}/${REPO}/contents/.github/workflows/${WF}?ref=main`;
+  const blob = async () => {
+    const r = await fetch(url, { headers: hdr(), cache: 'no-store' });
+    return r.ok ? (await r.json()).sha : '';
+  };
+  onProgress('Verifying workflow integrity...');
+  if ((await blob()) === WF_BLOB) return;
+  if (owner.toLowerCase() !== UPSTREAM_OWNER.toLowerCase()) {
+    onProgress('Updating your fork to the reviewed workflow...');
+    await fetch(`${GH}/repos/${owner}/${REPO}/merge-upstream`, {
+      method: 'POST',
+      headers: hdr(),
+      body: JSON.stringify({ branch: 'main' }),
+    }).catch(() => {});
+    await sleep(2000);
+    if ((await blob()) === WF_BLOB) return;
+  }
+  throw new Error('Workflow in ' + owner + '/' + REPO + ' does not match the reviewed version. Your token was not sent.');
+}
+
+export async function stopShell(onProgress = () => {}) {
+  const owner = getUser()?.login;
+  if (!owner || !getToken()) return;
+  onProgress('Stopping shell...');
+  await dropSecret(owner);
+  await cancelRuns(owner).catch(() => {});
+  try {
+    const r = await fetch(`${GH}/repos/${owner}/${WS_REPO}/keys?per_page=100`, { headers: hdr() });
+    if (r.ok) {
+      for (const k of await r.json()) {
+        if (k.title === 'vscode-lite-runner') {
+          await fetch(`${GH}/repos/${owner}/${WS_REPO}/keys/${k.id}`, { method: 'DELETE', headers: hdr() });
+        }
+      }
+    }
+  } catch {}
+  clearInterval(mon);
+  state.http = '';
+  state.ws = '';
+  state.tunnel = false;
+  state.key = '';
+  onProgress('Shell stopped.');
+}
+
 export async function ensureTunnel(onProgress) {
   onProgress('Checking existing tunnel...');
   let { owner, repo } = getTargetRepo();
@@ -278,6 +397,8 @@ export async function ensureTunnel(onProgress) {
 
   // Make sure repository exists in the user's account
   await ensureFork(owner, onProgress);
+  await verifyWorkflow(owner, onProgress);
+  await stopLegacy(owner, onProgress);
   await ensureWorkspaceRepo(owner, onProgress);
   onProgress('Storing workspace token...');
   await syncSecret(owner);
@@ -296,6 +417,8 @@ export async function ensureTunnel(onProgress) {
     await sleep(3000);
     u = await fetchTunnelUrl(owner, repo);
     if (u && (await alive(u))) {
+      await dropSecret(owner);
+      await dropLegacyWorkspace(owner, onProgress);
       apply(u, owner);
       return true;
     }
@@ -305,5 +428,5 @@ export async function ensureTunnel(onProgress) {
 }
 
 window.addEventListener('github-auth-change', () => {
-  if (!getToken()) { state.http = ''; state.ws = ''; state.tunnel = false; state.owner = ''; state.key = ''; }
+  if (!getToken()) { state.http = ''; state.ws = ''; state.tunnel = false; state.owner = ''; state.key = ''; clearInterval(mon); }
 });

@@ -10,47 +10,84 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 330
     env:
-      WS_TOKEN: ${{ secrets.WS_TOKEN }}
       WS_REPO: ${{ github.repository_owner }}/vscode-lite-workspace
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
       - run: cd server && npm install --no-audit --no-fund
-      - name: Start backend and Cloudflare tunnel
+      - name: Register runner deploy key
+        env:
+          WS_TOKEN: ${{ secrets.WS_TOKEN }}
         run: |
+          set -e
           [ -n "$WS_TOKEN" ] || { echo "missing WS_TOKEN"; exit 1; }
+          api() { curl -fsS -H "Authorization: Bearer $WS_TOKEN" -H "Accept: application/vnd.github+json" "$@"; }
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keygen -q -t ed25519 -N '' -C vscode-lite-runner -f ~/.ssh/ws
+          for id in $(api "https://api.github.com/repos/$WS_REPO/keys?per_page=100" | jq -r '.[] | select(.title=="vscode-lite-runner") | .id'); do
+            api -X DELETE "https://api.github.com/repos/$WS_REPO/keys/$id" > /dev/null
+          done
+          jq -n --arg k "$(cat ~/.ssh/ws.pub)" '{title:"vscode-lite-runner",key:$k,read_only:false}' | api -X POST -d @- "https://api.github.com/repos/$WS_REPO/keys" > /dev/null
+          echo "deploy key registered"
+      - name: Start workspace, backend and tunnel
+        run: |
+          set -e
+          export GIT_TERMINAL_PROMPT=0
+          SSHC="ssh -i $HOME/.ssh/ws -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          export GIT_SSH_COMMAND="$SSHC"
           SESSION_KEY=$(openssl rand -hex 24)
           echo "::add-mask::$SESSION_KEY"
-          B64=$(printf 'x-access-token:%s' "$WS_TOKEN" | base64 -w0)
-          echo "::add-mask::$B64"
-          gitauth() {
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git remote add origin "https://github.com/$WS_REPO.git"
-            git config http.https://github.com/.extraheader "AUTHORIZATION: basic $B64"
-          }
-          mkdir -p "$HOME/workspace" && cd "$HOME/workspace"
-          git init -q -b main; gitauth
+          gitid() { git config user.name "github-actions[bot]"; git config user.email "github-actions[bot]@users.noreply.github.com"; }
+          mkdir -p "$HOME/workspace"
+          cd "$HOME/workspace"
+          git init -q -b main
+          gitid
+          git config core.sshCommand "$SSHC"
+          git remote add origin "git@github.com:$WS_REPO.git"
+          FORCE=""
           if git fetch -q origin main; then
             git reset -q --hard FETCH_HEAD
           else
             printf 'node_modules/\n.env\n*.log\n' > .gitignore
             printf '# Workspace\n' > README.md
-            git add -A; git commit -qm "init workspace"
+            git add -A
+            git commit -qm "init workspace"
           fi
-          git push -q -u origin main || echo "WARN: workspace push failed"
+          if [ "$(git rev-list --count HEAD)" = 1 ] && git fetch -q "https://github.com/$GITHUB_REPOSITORY.git" workspace 2>/dev/null; then
+            git reset -q --hard FETCH_HEAD
+            FORCE="-f"
+            echo "migrated legacy workspace"
+          fi
+          git push -q $FORCE -u origin main || echo "WARN: workspace push failed"
+          echo OK > "$HOME/.sync-status"
+          nohup bash -c '
+            cd "$HOME/workspace" || exit 1
+            while true; do
+              sleep 30
+              find . -path ./.git -prune -o -type f -size +90M -printf "/%P\n" > .git/info/exclude
+              git add -A
+              if ! git diff --cached --quiet; then
+                if git commit -qm autosave && git push -q origin main 2> "$HOME/.sync-err"; then
+                  echo OK > "$HOME/.sync-status"
+                else
+                  echo "FAIL $(tr "\n" " " < "$HOME/.sync-err" | head -c 200)" > "$HOME/.sync-status"
+                fi
+              fi
+            done' > "$HOME/autosave.log" 2>&1 &
           cd "$GITHUB_WORKSPACE"
-          nohup bash -c 'while true; do sleep 60; cd "$HOME/workspace" || continue; git add -A; git diff --cached --quiet || { git commit -qm autosave && git push -q origin main; }; done' > autosave.log 2>&1 &
-          WORKSPACE="$HOME/workspace" SESSION_KEY="$SESSION_KEY" nohup env -u WS_TOKEN node server/server.js > server.log 2>&1 &
+          WORKSPACE="$HOME/workspace" SESSION_KEY="$SESSION_KEY" SYNC_STATUS="$HOME/.sync-status" nohup node server/server.js > server.log 2>&1 &
           sleep 3
-          curl -fsSL -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          curl -fsSL -o cloudflared "https://github.com/cloudflare/cloudflared/releases/download/2026.10.2/cloudflared-linux-amd64"
+          echo "35fbdd2beb378436c7da377d7358cea8e33f9c94a6705d1d8036bf9b0d6d8005  cloudflared" | sha256sum -c -
           chmod +x cloudflared
           nohup ./cloudflared tunnel --no-autoupdate --url http://localhost:3000 > cf.log 2>&1 &
           URL=""
           for i in $(seq 1 30); do
-            URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' cf.log | head -1)
+            URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' cf.log | head -1 || true)
             [ -n "$URL" ] && break
             sleep 2
           done
@@ -62,11 +99,16 @@ jobs:
             if [ "$CODE" != "000" ] && [ "$CODE" -lt 500 ]; then OK=1; break; fi
             sleep 3
           done
-          [ "$OK" = 1 ] || { echo "unreachable"; exit 1; }
-          mkdir -p "$HOME/tun" && cd "$HOME/tun"
-          git init -q -b tunnel; gitauth
-          echo "{\"url\":\"$URL\",\"key\":\"$SESSION_KEY\",\"ts\":$(date +%s)}" > tunnel.json
-          git add tunnel.json; git commit -qm tunnel
+          [ "$OK" = 1 ] || { echo "tunnel unreachable"; exit 1; }
+          mkdir -p "$HOME/tun"
+          cd "$HOME/tun"
+          git init -q -b tunnel
+          gitid
+          git config core.sshCommand "$SSHC"
+          git remote add origin "git@github.com:$WS_REPO.git"
+          printf '{"url":"%s","key":"%s","ts":%s}\n' "$URL" "$SESSION_KEY" "$(date +%s)" > tunnel.json
+          git add tunnel.json
+          git commit -qm tunnel
           git push -q -u origin tunnel --force
           echo "PUBLISHED"
       - name: Keep alive (5h)

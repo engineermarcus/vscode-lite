@@ -12,7 +12,7 @@ const run = promisify(execFile);
 const ROOT = path.resolve(process.env.WORKSPACE || process.cwd());
 
 const app = express();
-app.use(express.json({ limit: '100mb' }));
+
 app.use((req, res, next) => {
   res.set('Access-Control-Allow-Origin', '*');
   res.set('Access-Control-Allow-Headers', 'Content-Type, X-Session-Key');
@@ -24,6 +24,7 @@ app.use((req, res, next) => {
 const KEY = process.env.SESSION_KEY || '';
 const okKey = k => { const a = Buffer.from(String(k || '')), b = Buffer.from(KEY); return KEY.length > 0 && a.length === b.length && crypto.timingSafeEqual(a, b); };
 app.use((req, res, next) => okKey(req.get('x-session-key') || req.query.k) ? next() : res.sendStatus(401));
+app.use(express.json({ limit: '100mb' }));
 
 const safe = p => {
   const f = path.resolve(ROOT, String(p || '').replace(/^\/+/, ''));
@@ -144,6 +145,7 @@ app.get('/api/search', h(async (req, res) => {                  // GUESS: result
 
 app.post('/api/replace', h(async (req, res) => {                // GUESS: body has query, replacement, files?
   const { query, replacement = '', files } = req.body;
+  if (typeof query !== 'string' || !query) throw new Error('empty query');
   let list = files;
   if (!list) {
     let out = '';
@@ -227,27 +229,64 @@ app.post('/api/git/checkout', h(async (req, res) => {
   res.json({ ok: true });
 }));
 
+app.get('/api/sync-status', (req, res) => {
+  let s = 'OK';
+  try { s = fs.readFileSync(process.env.SYNC_STATUS || '', 'utf8').trim() || 'OK'; } catch {}
+  res.json({ status: s });
+});
+
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 server.on('upgrade', (req, sock, head) => {
   const u = new URL(req.url, 'http://x');
   if (u.pathname !== '/ws/terminal' || !okKey(u.searchParams.get('k'))) return sock.destroy();
-  wss.handleUpgrade(req, sock, head, ws => wss.emit('connection', ws));
+  wss.handleUpgrade(req, sock, head, ws => wss.emit('connection', ws, req));
 });
-wss.on('connection', ws => {
-  const shell = process.env.SHELL || 'bash';
-  const p = pty.spawn(shell, [], { name: 'xterm-256color', cols: 80, rows: 24, cwd: ROOT, env: (({ SESSION_KEY, ...e }) => e)(process.env) });
+const sessions = new Map();
+const MAXBUF = 200000;
+const IDLE_MS = 30 * 60 * 1000;
+wss.on('connection', (ws, req) => {
+  const sid = new URL(req.url, 'http://x').searchParams.get('s') || '';
+  if (!/^[\w-]{1,80}$/.test(sid)) return ws.close();
+  let S = sessions.get(sid);
+  const replay = !!S;
+  if (S) {
+    clearTimeout(S.timer);
+    try { S.ws && S.ws.close(); } catch {}
+  } else {
+    const shell = process.env.SHELL || 'bash';
+    const env = (({ SESSION_KEY, ...e }) => e)(process.env);
+    const p = pty.spawn(shell, [], { name: 'xterm-256color', cols: 80, rows: 24, cwd: ROOT, env });
+    S = { p, buf: '', ws: null, timer: null, shell: path.basename(shell) };
+    sessions.set(sid, S);
+    p.onData(d => {
+      S.buf = (S.buf + d).slice(-MAXBUF);
+      if (S.ws && S.ws.readyState === 1) S.ws.send(JSON.stringify({ type: 'output', data: d }));
+    });
+    p.onExit(() => {
+      clearTimeout(S.timer);
+      sessions.delete(sid);
+      if (S.ws && S.ws.readyState === 1) { S.ws.send(JSON.stringify({ type: 'exit' })); S.ws.close(); }
+    });
+  }
+  S.ws = ws;
   const send = o => ws.readyState === 1 && ws.send(JSON.stringify(o));
-  send({ type: 'session', shell: path.basename(shell) });
-  p.onData(d => send({ type: 'output', data: d }));
-  p.onExit(() => { send({ type: 'exit' }); ws.close(); });
+  send({ type: 'session', shell: S.shell, replay });
+  if (replay && S.buf) send({ type: 'output', data: S.buf });
+  const ping = setInterval(() => { if (ws.readyState === 1) ws.ping(); }, 30000);
   ws.on('message', m => {
     try {
       const j = JSON.parse(m);
-      if (j.type === 'input') p.write(j.data);
-      else if (j.type === 'resize') p.resize(Math.max(2, j.cols | 0), Math.max(2, j.rows | 0));
+      if (j.type === 'input') S.p.write(String(j.data));
+      else if (j.type === 'resize') S.p.resize(Math.max(2, j.cols | 0), Math.max(2, j.rows | 0));
     } catch {}
   });
-  ws.on('close', () => { try { p.kill(); } catch {} });
+  ws.on('close', () => {
+    clearInterval(ping);
+    if (S.ws !== ws) return;
+    S.ws = null;
+    S.timer = setTimeout(() => { try { S.p.kill(); } catch {} sessions.delete(sid); }, IDLE_MS);
+  });
 });
+
 server.listen(3000, () => console.log('listening on 3000, root', ROOT));

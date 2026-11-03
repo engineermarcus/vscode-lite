@@ -1,4 +1,4 @@
-import { baseReady, getBase, ensureTunnel } from './tunnel.js';
+import { baseReady, getBase, ensureTunnel, stopShell } from './tunnel.js';
 import { getToken, getUser, whoami, login, logout } from './githubAuth.js';
 
 const container = document.createElement('div');
@@ -77,7 +77,8 @@ function updateUI() {
     userBadge.onclick = (e) => {
       e.stopPropagation();
       if (confirm(`Signed in as @${user.login}.\n\nDo you want to sign out?`)) {
-        logout();
+        setStatus('Stopping shell...', '#555', false);
+        stopShell((m) => log(m)).catch(() => {}).finally(() => logout());
       }
     };
   } else {
@@ -157,3 +158,5 @@ window.addEventListener('github-auth-change', () => {
 });
 
 enforceLogin();
+
+window.addEventListener('tunnel-lost', () => { busy = false; updateUI(); });
