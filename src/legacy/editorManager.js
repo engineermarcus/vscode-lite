@@ -1,3 +1,4 @@
+import { getBase } from './tunnel.js';
 import * as monaco from 'monaco-editor';
 
 class EditorManager {
@@ -569,7 +570,15 @@ class EditorManager {
     if (this.mediaContainer) {
       this.mediaContainer.style.display = "flex";
       if (isImage && this.mediaImg) {
-        this.mediaImg.src = `/api/raw?path=${encodeURIComponent(filePath)}&t=${Date.now()}`;
+        fetch(`${getBase().http || ""}/api/raw?path=${encodeURIComponent(filePath)}`, { cache: "no-store" })
+          .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(r.status))))
+          .then((b) => {
+            if (this.activePath !== filePath) return;
+            if (this._mediaUrl) URL.revokeObjectURL(this._mediaUrl);
+            this._mediaUrl = URL.createObjectURL(b);
+            this.mediaImg.src = this._mediaUrl;
+          })
+          .catch(() => {});
         this.mediaImg.style.display = "block";
       }
       if (this.mediaInfo) {

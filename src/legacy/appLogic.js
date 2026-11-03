@@ -2066,10 +2066,18 @@ export async function bootApp() {
 
   document.getElementById("ctx-exp-download")?.addEventListener("click", () => {
     if (contextTarget.path) {
-      const link = document.createElement("a");
-      link.href = `${API_BASE}/api/raw?path=${encodeURIComponent(contextTarget.path)}`;
-      link.download = contextTarget.path.split("/").pop();
-      link.click();
+      const name = contextTarget.path.split("/").pop();
+      fetch(`${getBase().http || ""}/api/raw?path=${encodeURIComponent(contextTarget.path)}`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(r.status))))
+        .then((b) => {
+          const url = URL.createObjectURL(b);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = name;
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 5000);
+        })
+        .catch(() => showToast("Download failed", "error", 2000));
     }
   });
 
