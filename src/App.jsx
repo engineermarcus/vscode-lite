@@ -431,25 +431,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Mobile Touch Accessory Bar — Terminal Controls (shown in Terminal view) */}
-            <div className="mobile-touch-bar" id="mobile-touch-bar-terminal">
-              <button className="touch-key touch-key-ctrl" id="btn-term-ctrl" data-term-mod="ctrl">Ctrl</button>
-              <button className="touch-key" data-term-key="Tab">Tab</button>
-              <button className="touch-key" data-term-key="Esc">Esc</button>
-              <button className="touch-key" data-term-key="Left"><i className="codicon codicon-arrow-left"></i></button>
-              <button className="touch-key" data-term-key="Up"><i className="codicon codicon-arrow-up"></i></button>
-              <button className="touch-key" data-term-key="Down"><i className="codicon codicon-arrow-down"></i></button>
-              <button className="touch-key" data-term-key="Right"><i className="codicon codicon-arrow-right"></i></button>
-              <button className="touch-key" data-term-key="Ctrl-C">^C</button>
-              <button className="touch-key" data-term-key="Ctrl-D">^D</button>
-              <button className="touch-key" data-term-key="Ctrl-Z">^Z</button>
-              <button className="touch-key" data-term-key="Ctrl-L">^L</button>
-              <button className="touch-key" data-term-insert="-">-</button>
-              <button className="touch-key" data-term-insert="/">/</button>
-              <button className="touch-key" data-term-insert="|">|</button>
-              <button className="touch-key" data-term-insert="~">~</button>
-              <button className="touch-key" data-term-key="Enter">⏎ Enter</button>
-            </div>
           </div>
         </main>
       </div>

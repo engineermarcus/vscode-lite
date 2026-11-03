@@ -212,7 +212,7 @@ class TerminalManager {
     termDiv.appendChild(body);
     term.open(body);
     const selApi = attachTermSelect(term, body);
-    // termDiv.appendChild(buildTermBar(term, selApi));
+    termDiv.appendChild(buildTermBar(term, selApi));
     this.terminals.set(id, term);
     this.fitAddons.set(id, fitAddon);
 

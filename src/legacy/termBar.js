@@ -1,15 +1,15 @@
-const BASE = 'flex:0 0 auto;padding:7px 11px;border:0;border-radius:7px;background:#3b4252;color:#fff;font:600 13px monospace;min-width:38px;';
+const BASE = 'flex:0 0 auto;padding:7px 11px;border-radius:4px;background:var(--bg-input);border:1px solid var(--border-input);color:var(--text-bright);font:600 11px var(--font-code);min-width:26px;height:26px;';
 
 export function buildTermBar(term, api) {
   const bar = document.createElement('div');
-  bar.style.cssText = 'height:40px;display:flex;gap:5px;align-items:center;padding:0 5px;overflow-x:auto;overflow-y:hidden;background:#161a23;border-top:1px solid #2b3040;box-sizing:border-box;scrollbar-width:none';
+  bar.style.cssText = 'min-height:34px;display:flex;gap:5px;align-items:center;padding:0 5px;overflow-x:auto;overflow-y:hidden;background:var(--bg-touchbar);border-top:1px solid var(--border-color);box-sizing:border-box;scrollbar-width:none';
   const send = (d) => (term.input ? term.input(d, true) : term.paste(d));
   const btns = {};
   const mod = (term._mod = {
     ctrl: false, alt: false,
     refresh() {
-      if (btns.ctrl) btns.ctrl.style.background = mod.ctrl ? '#2563eb' : '#3b4252';
-      if (btns.alt) btns.alt.style.background = mod.alt ? '#2563eb' : '#3b4252';
+      if (btns.ctrl) btns.ctrl.style.background = mod.ctrl ? 'var(--accent-color)' : 'var(--bg-input)';
+      if (btns.alt) btns.alt.style.background = mod.alt ? 'var(--accent-color)' : 'var(--bg-input)';
     },
   });
   const arrow = (c) => () => send('\x1b' + (term.modes && term.modes.applicationCursorKeysMode ? 'O' : '[') + c);
@@ -27,7 +27,7 @@ export function buildTermBar(term, api) {
     ['^C', () => send('\x03')], ['^D', () => send('\x04')], ['^Z', () => send('\x1a')], ['^L', () => send('\x0c')],
     ['Paste', () => api.paste()],
     ['Copy', (b) => (term.hasSelection() ? api.copy() : flash(b, 'Select 1st'))],
-    ['Select', (b) => { b.style.background = api.toggle(b) ? '#2563eb' : '#3b4252'; }],
+    ['Select', (b) => { b.style.background = api.toggle(b) ? 'var(--accent-color)' : 'var(--bg-input)'; }],
     ['All', async (b) => { await api.copyAll(); flash(b, 'Copied ✓'); }],
     ['Clear', () => term.clear()],
   ];
