@@ -1,3 +1,4 @@
+import { attachTermSelect } from './termSelect.js';
 import { Terminal } from '@xterm/xterm';
 import { getBase } from './tunnel.js';
 import { FitAddon } from '@xterm/addon-fit';
@@ -206,6 +207,7 @@ class TerminalManager {
     term.loadAddon(new WebLinksAddon());
 
     term.open(termDiv);
+    attachTermSelect(term, termDiv);
     this.terminals.set(id, term);
     this.fitAddons.set(id, fitAddon);
 
