@@ -66,19 +66,18 @@ export function attachTermSelect(term, host) {
     return b;
   };
 
-  // floating pill inside the terminal: Select toggle + Copy all
-  host.style.position = 'relative';
-  const pill = document.createElement('div');
-  pill.style.cssText = 'position:absolute;right:8px;bottom:8px;z-index:50;display:flex;gap:6px;opacity:.92';
-  const modeBtn = mk('Select', () => {
-    mode = !mode;
-    modeBtn.style.background = mode ? '#2563eb' : '#3b4252';
-    modeBtn.textContent = mode ? 'Selecting…' : 'Select';
+  let modeBtn = null;
+  const setMode = (v) => {
+    mode = v;
+    if (modeBtn) modeBtn.style.background = mode ? '#2563eb' : '#3b4252';
     if (!mode) { term.clearSelection(); hide(); }
-  });
-  const allBtn = mk('Copy all', async (b) => { await toClip(allText()); flash(b, 'Copied ✓'); });
-  pill.append(modeBtn, allBtn);
-  host.appendChild(pill);
+  };
+  const api = {
+    toggle: (btn) => { modeBtn = btn || modeBtn; setMode(!mode); return mode; },
+    copyAll: async () => { await toClip(allText()); },
+    copy: copySel,
+    paste,
+  };
 
   function show() {
     if (!bar) {
@@ -110,7 +109,6 @@ export function attachTermSelect(term, host) {
   };
 
   host.addEventListener('touchstart', (e) => {
-    if (e.target.closest && pill.contains(e.target)) return;
     clearTimeout(timer);
     if (e.touches.length !== 1) return;
     sx = lx = e.touches[0].clientX; sy = ly = e.touches[0].clientY;
@@ -158,4 +156,5 @@ export function attachTermSelect(term, host) {
     if (longp) { e.stopPropagation(); longp = false; return; }
     if (term.hasSelection()) { term.clearSelection(); hide(); }
   }, { capture: true });
+  return api;
 }

@@ -1,4 +1,5 @@
 import { attachTermSelect } from './termSelect.js';
+import { buildTermBar } from './termBar.js';
 import { Terminal } from '@xterm/xterm';
 import { getBase } from './tunnel.js';
 import { FitAddon } from '@xterm/addon-fit';
@@ -206,8 +207,12 @@ class TerminalManager {
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
 
-    term.open(termDiv);
-    attachTermSelect(term, termDiv);
+    const body = document.createElement('div');
+    body.style.cssText = 'width:100%;height:calc(100% - 40px)';
+    termDiv.appendChild(body);
+    term.open(body);
+    const selApi = attachTermSelect(term, body);
+    termDiv.appendChild(buildTermBar(term, selApi));
     this.terminals.set(id, term);
     this.fitAddons.set(id, fitAddon);
 
@@ -299,6 +304,11 @@ class TerminalManager {
 
     if (term._dD) term._dD.dispose();
     term._dD = term.onData((data) => {
+      if (term._mod && data.length === 1 && (term._mod.ctrl || term._mod.alt)) {
+        if (term._mod.ctrl) { const c = data.toUpperCase().charCodeAt(0); if (c >= 64 && c <= 95) data = String.fromCharCode(c - 64); }
+        if (term._mod.alt) data = '\x1b' + data;
+        term._mod.ctrl = term._mod.alt = false; term._mod.refresh();
+      }
       if (socket.readyState !== WebSocket.OPEN) { this._queue(id, data); return; }
       if (data.length === 1 && data >= ' ' && data <= '~' && term.buffer.active.type === 'normal' && this._predictOn()) {
         term.write(data); term._pred = (term._pred || 0) + 1;
