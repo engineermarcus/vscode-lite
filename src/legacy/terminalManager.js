@@ -9,6 +9,7 @@ class TerminalManager {
     this.tabsContainer = document.getElementById("terminal-session-tabs");
     this.terminals = new Map(); // id -> Terminal
     this.fitAddons = new Map();  // id -> FitAddon
+    window.addEventListener('tunnel-ready', () => this.reconnectDead());
     this.sockets = new Map();    // id -> WebSocket
     this.activeId = null;
     this.terminalNames = new Map(); // id -> string
@@ -207,6 +208,14 @@ class TerminalManager {
     this.terminals.set(id, term);
     this.fitAddons.set(id, fitAddon);
 
+    this.openSocket(id, term, fitAddon);
+
+    this.switchTo(id);
+    this.renderTabs();
+    return id;
+  }
+
+  openSocket(id, term, fitAddon) {
     // Setup WebSocket
     const wsBase = getBase().ws || (() => {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -265,9 +274,15 @@ class TerminalManager {
       }
     });
 
-    this.switchTo(id);
-    this.renderTabs();
-    return id;
+  }
+
+  reconnectDead() {
+    this.terminals.forEach((term, id) => {
+      const s = this.sockets.get(id);
+      if (s && (s.readyState === WebSocket.OPEN || s.readyState === WebSocket.CONNECTING)) return;
+      term.write('\r\n\x1b[32m[reconnecting]\x1b[0m\r\n');
+      this.openSocket(id, term, this.fitAddons.get(id));
+    });
   }
 
   renderTabs() {

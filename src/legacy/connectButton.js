@@ -131,6 +131,7 @@ if (getToken()) {
 
 baseReady.then(() => {
   updateUI();
+  if (getBase().tunnel) window.dispatchEvent(new Event('tunnel-ready'));
 });
 
 // Hard gate: the app is unusable without a GitHub sign-in
