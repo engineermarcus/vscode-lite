@@ -54,6 +54,7 @@ container.appendChild(btn);
 container.appendChild(userBadge);
 
 let busy = false;
+const log = (msg, level) => window.dispatchEvent(new CustomEvent('shell-log', { detail: { msg, level } }));
 
 const setStatus = (text, bg, clickable = true) => {
   btn.textContent = text;
@@ -96,24 +97,27 @@ function updateUI() {
 btn.onclick = async () => {
   if (busy) return;
   busy = true;
-  setStatus('Starting...', '#555', false);
+  setStatus('Connecting...', '#555', false);
 
   try {
     if (!getToken()) {
       await login('Sign in with GitHub to start your private cloud shell.');
       updateUI();
     }
-    const ok = await ensureTunnel((msg) => setStatus(msg, '#555', false));
+    const ok = await ensureTunnel((msg) => log(msg));
+    if (ok) log('Shell online. Connecting terminal...', 'ok');
     if (ok) {
       window.dispatchEvent(new Event('tunnel-ready'));
       busy = false;
       updateUI();
       return;
     }
+    log('Timed out waiting for the shell. Tap Retry.', 'error');
     setStatus('Timed out · Retry', '#a33');
   } catch (e) {
     console.error('[tunnel] connect error:', e);
-    setStatus('Error: ' + (e.message || 'failed'), '#a33');
+    log(e.message || 'failed', 'error');
+    setStatus('Error · Retry', '#a33');
   }
   busy = false;
   btn.disabled = false;

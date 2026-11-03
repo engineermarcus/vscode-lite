@@ -10,6 +10,7 @@ class TerminalManager {
     this.terminals = new Map(); // id -> Terminal
     this.fitAddons = new Map();  // id -> FitAddon
     window.addEventListener('tunnel-ready', () => this.reconnectDead());
+    window.addEventListener('shell-log', (e) => this.logLine(e.detail.msg, e.detail.level));
     this.sockets = new Map();    // id -> WebSocket
     this.activeId = null;
     this.terminalNames = new Map(); // id -> string
@@ -216,6 +217,11 @@ class TerminalManager {
   }
 
   openSocket(id, term, fitAddon) {
+    if (!getBase().tunnel) {
+      this.sockets.delete(id);
+      term.write('\x1b[32mShell offline. Tap "Connect shell" to start.\x1b[0m\r\n');
+      return;
+    }
     // Setup WebSocket
     const wsBase = getBase().ws || (() => {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -228,13 +234,6 @@ class TerminalManager {
     socket.addEventListener('close', (e) => console.log('[term] close', e.code));
     socket.addEventListener('error', () => console.log('[term] error'));
     this.sockets.set(id, socket);
-    const dbg = (m) => term.write('\r\n\x1b[33m[dbg] ' + m + '\x1b[0m\r\n');
-    dbg('url ' + wsUrl + ' tunnel=' + getBase().tunnel);
-    socket.addEventListener('open', () => dbg('open'));
-    socket.addEventListener('error', () => dbg('error'));
-    socket.addEventListener('close', (e) => dbg('close ' + e.code));
-    let n = 0;
-    socket.addEventListener('message', () => { n++; if (n <= 3) dbg('msg #' + n); });
 
     socket.onopen = () => {
       setTimeout(() => {
@@ -276,11 +275,22 @@ class TerminalManager {
 
   }
 
+  logLine(msg, level) {
+    if (!this.terminals.size) this.createTerminal();
+    const term = this.terminals.get(this.activeId);
+    if (!term) return;
+    const c = level === 'error' ? '31' : level === 'ok' ? '92' : '32';
+    const inplace = /\(\d+s\)/.test(msg);
+    if (this._inplace && !inplace) term.write('\r\n');
+    term.write((inplace ? '\r\x1b[2K' : '') + '\x1b[' + c + 'm> ' + msg + '\x1b[0m' + (inplace ? '' : '\r\n'));
+    this._inplace = inplace;
+  }
+
   reconnectDead() {
     this.terminals.forEach((term, id) => {
       const s = this.sockets.get(id);
       if (s && (s.readyState === WebSocket.OPEN || s.readyState === WebSocket.CONNECTING)) return;
-      term.write('\r\n\x1b[32m[reconnecting]\x1b[0m\r\n');
+      term.write('\x1b[32m> Connecting terminal...\x1b[0m\r\n');
       this.openSocket(id, term, this.fitAddons.get(id));
     });
   }

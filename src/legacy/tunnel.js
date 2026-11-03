@@ -79,6 +79,7 @@ async function ensureWorkspaceRepo(owner, onProgress) {
     return;
   }
   if (r.status !== 404) throw new Error('Workspace check failed (' + r.status + ')');
+  onProgress('Creating private workspace repo...');
   const c = await fetch('https://api.github.com/user/repos', {
     method: 'POST',
     headers: hdr(),
@@ -264,7 +265,9 @@ export async function ensureTunnel(onProgress) {
   // Make sure repository exists in the user's account
   await ensureFork(owner, onProgress);
   await ensureWorkspaceRepo(owner, onProgress);
+  onProgress('Storing workspace token...');
   await syncSecret(owner);
+  onProgress('Workspace ready.');
 
   // Check if CI is already starting or running
   if (await runActive(owner, repo)) {
