@@ -2024,3 +2024,7 @@ kbd {
   opacity: 0.8;
   z-index: 1;
 }
+
+
+/* pill removed: the top-right panel icon and swipe switch views now */
+.mobile-view-switch { display: none !important; }

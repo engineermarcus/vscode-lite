@@ -2325,3 +2325,36 @@ function initFileWatcher(loadTree) {
   }
   connect();
 }
+
+// ---- palette dismiss: tap backdrop or press Esc ----
+document.addEventListener('click', (e) => {
+  const m = document.getElementById('command-palette-modal');
+  if (m && !m.classList.contains('hidden') && e.target === m) m.classList.add('hidden');
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const m = document.getElementById('command-palette-modal');
+  if (m && !m.classList.contains('hidden')) m.classList.add('hidden');
+});
+
+// ---- palette dismiss and mobile panel toggle ----
+document.addEventListener('click', (e) => {
+  const m = document.getElementById('command-palette-modal');
+  if (m && e.target === m && m.classList.contains('hidden') === false) m.classList.add('hidden');
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const m = document.getElementById('command-palette-modal');
+  if (m && m.classList.contains('hidden') === false) m.classList.add('hidden');
+});
+// On mobile the terminal is a full-screen swipe view, so the panel icon
+// switches between Editor and Terminal instead of hiding the panel.
+document.getElementById('btn-toggle-panel')?.addEventListener('click', (e) => {
+  if (window.innerWidth > 768) return;
+  const body = document.querySelector('.workbench-body');
+  if (body === null || body.classList.contains('mobile-swipe') === false) return;
+  e.stopImmediatePropagation();
+  const showingTerminal = body.classList.contains('show-terminal');
+  document.getElementById(showingTerminal ? 'btn-mobile-view-editor' : 'btn-mobile-view-terminal')?.click();
+  document.getElementById('btn-toggle-panel')?.classList.toggle('active', showingTerminal === false);
+}, true);
