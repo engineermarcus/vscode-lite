@@ -61,8 +61,21 @@ async function ghFetch(path, init = {}, owner = null, repo = null) {
  * 2. The repo's 'tunnel' branch via GitHub API (for private repos)
  * 3. Fallback gist (for upstream owner)
  */
+async function cachedTunnel(owner) {
+  try {
+    const c = JSON.parse(localStorage.getItem('tun_cache') || 'null');
+    if (!c || c.owner !== owner || !RE.test(c.u) || !/^[a-f0-9]{48}$/.test(c.k) || Date.now() - c.ts > 5 * 3600e3) return null;
+    const ok = await Promise.race([alive(c.u, c.k), new Promise(r => setTimeout(() => r(false), 6000))]);
+    if (!ok) return null;
+    pendingKey = c.k;
+    return c.u;
+  } catch { return null; }
+}
+
 async function fetchTunnelUrl(owner) {
   pendingKey = '';
+  const cached = await cachedTunnel(owner);
+  if (cached) return cached;
   if (!owner || !getToken()) return null;
   try {
     const r = await ghFetch('/contents/tunnel.json?ref=tunnel&t=' + Date.now(), { cache: 'no-store' }, owner, WS_REPO);
@@ -154,6 +167,7 @@ function startMonitor() {
 function apply(u, owner = UPSTREAM_OWNER) {
   state.http = u;
   state.key = pendingKey;
+  try { localStorage.setItem('tun_cache', JSON.stringify({ u, k: pendingKey, owner, ts: Date.now() })); } catch {}
   startMonitor();
   state.ws = u.replace(/^https:/, 'wss:');
   state.tunnel = true;

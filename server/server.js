@@ -266,9 +266,17 @@ const wss = new WebSocketServer({ noServer: true });
 server.on('upgrade', (req, sock, head) => {
   const u = new URL(req.url, 'http://x');
   if (u.pathname !== '/ws/terminal' || !okKey(u.searchParams.get('k'))) return sock.destroy();
+  sock.setNoDelay(true); sock.setKeepAlive(true, 15000);
   wss.handleUpgrade(req, sock, head, ws => wss.emit('connection', ws, req));
 });
 const sessions = new Map();
+setInterval(() => {
+  for (const c of wss.clients) {
+    if (c._miss >= 3) { c.terminate(); continue; }
+    c._miss = (c._miss || 0) + 1;
+    try { c.ping(); c.send('{"type":"hb"}'); } catch {}
+  }
+}, 20000).unref();
 const MAXBUF = 200000;
 const IDLE_MS = 30 * 60 * 1000;
 wss.on('connection', (ws, req) => {
@@ -296,6 +304,7 @@ wss.on('connection', (ws, req) => {
     });
   }
   S.ws = ws;
+  ws._miss = 0; ws.on('pong', () => { ws._miss = 0; });
   const send = o => ws.readyState === 1 && ws.send(JSON.stringify(o));
   send({ type: 'session', shell: S.shell, replay });
   if (replay && S.buf) send({ type: 'output', data: S.buf });

@@ -217,6 +217,19 @@ class TerminalManager {
   }
 
   openSocket(id, term, fitAddon) {
+    if (!this._wake) {
+      this._wake = () => {
+        if (!getBase().tunnel) return;
+        this.terminals.forEach((t, tid) => {
+          const sk = this.sockets.get(tid);
+          if (sk && sk.readyState <= 1) return;
+          if (this._exited && this._exited.has(tid)) return;
+          this.openSocket(tid, t, this.fitAddons.get(tid));
+        });
+      };
+      window.addEventListener('online', this._wake);
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) this._wake(); });
+    }
     if (!getBase().tunnel) {
       this.sockets.delete(id);
       term.write('\x1b[32mShell offline. Tap "Connect shell" to start.\x1b[0m\r\n');
@@ -238,10 +251,21 @@ class TerminalManager {
       if (this.terminals.get(id) !== term || !getBase().tunnel || (this._exited && this._exited.has(id))) return;
       setTimeout(() => {
         if (this.terminals.get(id) === term && getBase().tunnel && this.sockets.get(id) === socket) this.openSocket(id, term, fitAddon);
-      }, 2000);
+      }, this._backoff(id));
     });
 
     socket.onopen = () => {
+      this._rt && this._rt.delete(id);
+      socket._last = Date.now();
+      socket._hb = setInterval(() => {
+        if (socket._hbOk && Date.now() - socket._last > 50000 && this.sockets.get(id) === socket) {
+          clearInterval(socket._hb);
+          try { socket.close(); } catch {}
+          this.openSocket(id, term, fitAddon);
+        }
+      }, 10000);
+      socket.addEventListener('close', () => clearInterval(socket._hb));
+      this._flush(id, socket);
       setTimeout(() => {
         fitAddon.fit();
         const { cols, rows } = term;
@@ -250,10 +274,12 @@ class TerminalManager {
     };
 
     socket.onmessage = (event) => {
+      socket._last = Date.now();
+      if (typeof event.data === 'string' && event.data.includes('"hb"')) socket._hbOk = true;
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === "output") {
-          term.write(msg.data);
+          this._unpredict(term); term.write(msg.data);
         } else if (msg.type === "session") {
           if (msg.replay) term.reset();
           const shellName = msg.shell || "bash";
@@ -269,18 +295,57 @@ class TerminalManager {
       }
     };
 
-    term.onData((data) => {
+    if (term._dD) term._dD.dispose();
+    term._dD = term.onData((data) => {
+      if (socket.readyState !== WebSocket.OPEN) { this._queue(id, data); return; }
+      if (data.length === 1 && data >= ' ' && data <= '~' && term.buffer.active.type === 'normal' && this._predictOn()) {
+        term.write(data); term._pred = (term._pred || 0) + 1;
+        clearTimeout(term._predT); term._predT = setTimeout(() => this._unpredict(term), 700);
+      }
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: "input", data }));
       }
     });
 
-    term.onResize(({ cols, rows }) => {
+    if (term._rD) term._rD.dispose();
+    term._rD = term.onResize(({ cols, rows }) => {
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: "resize", cols, rows }));
       }
     });
 
+  }
+
+  _backoff(id) {
+    const m = (this._rt ||= new Map());
+    const n = (m.get(id) || 0) + 1; m.set(id, n);
+    return Math.min(10000, 400 * 2 ** Math.min(n, 5)) * (0.6 + Math.random() * 0.8);
+  }
+
+  _queue(id, data) {
+    const q = (this._q ||= new Map());
+    const a = q.get(id) || [];
+    a.push({ t: Date.now(), data });
+    q.set(id, a.slice(-300));
+  }
+
+  _flush(id, socket) {
+    const a = this._q && this._q.get(id);
+    if (!a) return;
+    this._q.delete(id);
+    const d = a.filter(x => Date.now() - x.t < 20000).map(x => x.data).join('');
+    if (d) socket.send(JSON.stringify({ type: 'input', data: d }));
+  }
+
+  _predictOn() {
+    try { return localStorage.getItem('term_predict') !== '0'; } catch { return true; }
+  }
+
+  _unpredict(term) {
+    if (!term._pred) return;
+    clearTimeout(term._predT);
+    const n = term._pred; term._pred = 0;
+    term.write('\x1b[' + n + 'D\x1b[' + n + 'P');
   }
 
   clientId() {

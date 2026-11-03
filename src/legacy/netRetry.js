@@ -1,4 +1,4 @@
-const HOSTS = /(^|\.)(github\.com|githubusercontent\.com|trycloudflare\.com)$/i;
+const HOSTS = /(^|\.)(github\.com|githubusercontent\.com)$/i;
 const TRIES = 6, TIMEOUT = 10000, BASE = 500, CAP = 8000;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
