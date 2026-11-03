@@ -34,6 +34,8 @@ jobs:
           jq -n --arg k "$(cat ~/.ssh/ws.pub)" '{title:"vscode-lite-runner",key:$k,read_only:false}' | api -X POST -d @- "https://api.github.com/repos/$WS_REPO/keys" > /dev/null
           echo "deploy key registered"
       - name: Start workspace, backend and tunnel
+        env:
+          GH_USER: ${{ github.repository_owner }}
         run: |
           set -e
           export GIT_TERMINAL_PROMPT=0
@@ -91,6 +93,10 @@ jobs:
                 fi
               fi
             done' > "$HOME/autosave.log" 2>&1 &
+          sudo apt-get install -y zsh > /dev/null || true
+          mkdir -p "$HOME/.zsh-plugins"
+          git clone -q https://github.com/zsh-users/zsh-autosuggestions "$HOME/.zsh-plugins/zsh-autosuggestions" || true
+          git clone -q https://github.com/zsh-users/zsh-syntax-highlighting "$HOME/.zsh-plugins/zsh-syntax-highlighting" || true
           cd "$GITHUB_WORKSPACE"
           WORKSPACE="$HOME/workspace" SESSION_KEY="$SESSION_KEY" SYNC_STATUS="$HOME/.sync-status" nohup node server/server.js > server.log 2>&1 &
           sleep 3

@@ -288,8 +288,11 @@ wss.on('connection', (ws, req) => {
     clearTimeout(S.timer);
     try { S.ws && S.ws.close(); } catch {}
   } else {
-    const shell = process.env.SHELL || 'bash';
+    const ZDIR = new URL('./shell', import.meta.url).pathname;
+    const hasZsh = ['/usr/bin/zsh', '/bin/zsh'].some(p => fs.existsSync(p));
+    const shell = hasZsh ? 'zsh' : (process.env.SHELL || 'bash');
     const env = { ...(({ SESSION_KEY, ...e }) => e)(process.env), WS_ROOT: ROOT, PROMPT_COMMAND: 'p=${PWD#"$WS_ROOT"}; PS1="\\[\\e[32m\\]~${p:-/}\\[\\e[0m\\]$ "' };
+    if (hasZsh) { delete env.PROMPT_COMMAND; env.ZDOTDIR = ZDIR; }
     const p = pty.spawn(shell, [], { name: 'xterm-256color', cols: 80, rows: 24, cwd: ROOT, env });
     S = { p, buf: '', ws: null, timer: null, shell: path.basename(shell) };
     sessions.set(sid, S);
