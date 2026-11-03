@@ -194,3 +194,45 @@ window.addEventListener('github-auth-change', () => {
 enforceLogin();
 
 window.addEventListener('tunnel-lost', () => { busy = false; updateUI(); });
+
+// ---- connect overlay (shown over the terminal while the shell is offline) ----
+(() => {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:absolute;inset:0;z-index:20;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;background:rgba(13,17,23,0.85)';
+  const ovMsg = document.createElement('div');
+  ovMsg.style.cssText = 'color:#9da5b4;font-size:14px;line-height:1.4';
+  const ovBtn = document.createElement('button');
+  ovBtn.style.cssText = 'min-height:52px;padding:0 28px;border:0;border-radius:26px;background:#7c6cff;color:#fff;font-size:16px;font-weight:600';
+  ovBtn.onclick = () => btn.click();
+  ov.append(ovMsg, ovBtn);
+
+  function sync() {
+    try {
+      const host = document.getElementById('terminal-container')?.parentElement;
+      if (!host) return;
+      if (!ov.isConnected) {
+        if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+        host.appendChild(ov);
+      }
+      if (getBase().tunnel) { ov.style.display = 'none'; return; }
+      const t = btn.textContent || '';
+      let msg = 'Your shell is offline', label = 'Connect shell';
+      if (t === '...') { msg = 'Loading…'; label = 'Please wait'; }
+      else if (/^Connecting/.test(t)) { msg = 'Starting your cloud shell. This takes about a minute.'; label = 'Connecting…'; }
+      else if (/^Sign in/.test(t)) { msg = 'Sign in to start your private cloud shell'; label = 'Sign in with GitHub'; }
+      else if (/^(Error|Timed out)/.test(t)) { msg = 'Could not start the shell. Try again.'; label = 'Retry'; }
+      else if (/^Stopping/.test(t)) { msg = 'Stopping shell…'; label = 'Please wait'; }
+      ovMsg.textContent = msg;
+      ovBtn.textContent = label;
+      ovBtn.disabled = btn.disabled;
+      ovBtn.style.opacity = btn.disabled ? '0.6' : '1';
+      ov.style.display = 'flex';
+    } catch {}
+  }
+
+  new MutationObserver(sync).observe(btn, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
+  window.addEventListener('tunnel-ready', sync);
+  window.addEventListener('tunnel-lost', sync);
+  window.addEventListener('github-auth-change', sync);
+  const t = setInterval(() => { sync(); if (ov.isConnected) clearInterval(t); }, 300);
+})();
