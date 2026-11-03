@@ -2,6 +2,7 @@ import { getToken, getUser, whoami, login } from './githubAuth.js';
 
 const UPSTREAM_OWNER = 'engineermarcus';
 const REPO = 'vscode-lite';
+const WS_REPO = 'vscode-lite-workspace';
 const WF = 'backend.yml';
 const RE = /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/;
 
@@ -10,7 +11,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export function getTargetRepo() {
   const user = getUser();
-  const owner = user?.login || UPSTREAM_OWNER;
+  const owner = user?.login || '';
   return { owner, repo: REPO };
 }
 
@@ -50,37 +51,56 @@ async function ghFetch(path, init = {}, owner = null, repo = null) {
  * 2. The repo's 'tunnel' branch via GitHub API (for private repos)
  * 3. Fallback gist (for upstream owner)
  */
-async function fetchTunnelUrl(owner, repo) {
-  // 1. Raw GitHub user content
+async function fetchTunnelUrl(owner) {
+  if (!owner || !getToken()) return null;
   try {
-    const r = await fetch(
-      `https://raw.githubusercontent.com/${owner}/${repo}/tunnel/tunnel.json?t=${Date.now()}`,
-      { cache: 'no-store' }
-    );
-    if (r.ok) {
-      const j = await r.json();
-      const u = String(j?.url || '').replace(/\/$/, '');
-      if (RE.test(u)) return u;
-    }
-  } catch {}
-
-  // 2. GitHub API (handles private repos via user token)
-  if (getToken()) {
-    try {
-      const r = await ghFetch('/contents/tunnel.json?ref=tunnel', {}, owner, repo);
-      if (r.ok) {
-        const j = await r.json();
-        if (j.content) {
-          const raw = atob(j.content.replace(/\s+/g, ''));
-          const parsed = JSON.parse(raw);
-          const u = String(parsed?.url || '').replace(/\/$/, '');
-          if (RE.test(u)) return u;
-        }
-      }
-    } catch {}
+    const r = await ghFetch('/contents/tunnel.json?ref=tunnel&t=' + Date.now(), { cache: 'no-store' }, owner, WS_REPO);
+    if (!r.ok) return null;
+    const j = await r.json();
+    const u = String(JSON.parse(atob(String(j.content || '').replace(/\s+/g, ''))).url || '').replace(/\/$/, '');
+    return RE.test(u) ? u : null;
+  } catch {
+    return null;
   }
+}
 
-  return null;
+const hdr = () => ({
+  Authorization: 'Bearer ' + getToken(),
+  Accept: 'application/vnd.github+json',
+  'Content-Type': 'application/json',
+});
+
+async function ensureWorkspaceRepo(owner, onProgress) {
+  onProgress('Checking your private workspace...');
+  const r = await fetch(`https://api.github.com/repos/${owner}/${WS_REPO}`, { headers: hdr() });
+  if (r.ok) {
+    const info = await r.json().catch(() => ({}));
+    if (!info.private) throw new Error(WS_REPO + ' exists but is public. Make it private or delete it, then retry.');
+    return;
+  }
+  if (r.status !== 404) throw new Error('Workspace check failed (' + r.status + ')');
+  const c = await fetch('https://api.github.com/user/repos', {
+    method: 'POST',
+    headers: hdr(),
+    body: JSON.stringify({ name: WS_REPO, private: true, auto_init: true }),
+  });
+  if (!c.ok) throw new Error('Could not create private workspace (' + c.status + ')');
+}
+
+async function syncSecret(owner) {
+  const base = `https://api.github.com/repos/${owner}/${REPO}/actions/secrets`;
+  const k = await (await fetch(base + '/public-key', { headers: hdr() })).json();
+  if (!k.key) throw new Error('Could not read fork public key');
+  const { default: sodium } = await import('libsodium-wrappers');
+  await sodium.ready;
+  const V = sodium.base64_variants.ORIGINAL;
+  const box = sodium.crypto_box_seal(sodium.from_string(getToken()), sodium.from_base64(k.key, V));
+  const r = await fetch(base + '/WS_TOKEN', {
+    method: 'PUT',
+    headers: hdr(),
+    body: JSON.stringify({ encrypted_value: sodium.to_base64(box, V), key_id: k.key_id }),
+  });
+  if (!r.ok) throw new Error('Could not store workspace token (' + r.status + ')');
 }
 
 function apply(u, owner = UPSTREAM_OWNER) {
@@ -243,6 +263,8 @@ export async function ensureTunnel(onProgress) {
 
   // Make sure repository exists in the user's account
   await ensureFork(owner, onProgress);
+  await ensureWorkspaceRepo(owner, onProgress);
+  await syncSecret(owner);
 
   // Check if CI is already starting or running
   if (await runActive(owner, repo)) {
@@ -264,3 +286,7 @@ export async function ensureTunnel(onProgress) {
 
   return false;
 }
+
+window.addEventListener('github-auth-change', () => {
+  if (!getToken()) { state.http = ''; state.ws = ''; state.tunnel = false; state.owner = ''; }
+});

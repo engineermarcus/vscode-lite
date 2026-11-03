@@ -1,7 +1,7 @@
 name: backend
 on: workflow_dispatch
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: backend
   cancel-in-progress: true
@@ -9,6 +9,9 @@ jobs:
   serve:
     runs-on: ubuntu-latest
     timeout-minutes: 330
+    env:
+      WS_TOKEN: ${{ secrets.WS_TOKEN }}
+      WS_REPO: ${{ github.repository_owner }}/vscode-lite-workspace
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,29 +20,28 @@ jobs:
       - run: cd server && npm install --no-audit --no-fund
       - name: Start backend and Cloudflare tunnel
         run: |
-          git config user.name dev
-          git config user.email dev@users.noreply.github.com
-          mkdir -p "$HOME/workspace"
-          (
-            set -e
-            cd "$HOME/workspace"
-            git init -q -b workspace
+          [ -n "$WS_TOKEN" ] || { echo "missing WS_TOKEN"; exit 1; }
+          B64=$(printf 'x-access-token:%s' "$WS_TOKEN" | base64 -w0)
+          echo "::add-mask::$B64"
+          gitauth() {
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git remote add origin "https://github.com/${{ github.repository }}.git"
-            git config http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' '${{ github.token }}' | base64 -w0)"
-            if git fetch -q origin workspace; then
-              git reset -q --hard FETCH_HEAD
-            else
-              printf 'node_modules/\n.env\n*.log\n' > .gitignore
-              printf '# Workspace\n' > README.md
-              git add -A
-              git commit -qm "init workspace"
-            fi
-            git push -q -u origin workspace
-          ) || echo "WARN: workspace setup failed"
-          nohup bash -c 'while true; do sleep 60; cd "$HOME/workspace" || continue; git add -A; git diff --cached --quiet || { git commit -qm autosave && git push -q origin workspace; }; done' > autosave.log 2>&1 &
-          WORKSPACE="$HOME/workspace" nohup node server/server.js > server.log 2>&1 &
+            git remote add origin "https://github.com/$WS_REPO.git"
+            git config http.https://github.com/.extraheader "AUTHORIZATION: basic $B64"
+          }
+          mkdir -p "$HOME/workspace" && cd "$HOME/workspace"
+          git init -q -b main; gitauth
+          if git fetch -q origin main; then
+            git reset -q --hard FETCH_HEAD
+          else
+            printf 'node_modules/\n.env\n*.log\n' > .gitignore
+            printf '# Workspace\n' > README.md
+            git add -A; git commit -qm "init workspace"
+          fi
+          git push -q -u origin main || echo "WARN: workspace push failed"
+          cd "$GITHUB_WORKSPACE"
+          nohup bash -c 'while true; do sleep 60; cd "$HOME/workspace" || continue; git add -A; git diff --cached --quiet || { git commit -qm autosave && git push -q origin main; }; done' > autosave.log 2>&1 &
+          WORKSPACE="$HOME/workspace" nohup env -u WS_TOKEN node server/server.js > server.log 2>&1 &
           sleep 3
           curl -fsSL -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
           chmod +x cloudflared
@@ -50,25 +52,21 @@ jobs:
             [ -n "$URL" ] && break
             sleep 2
           done
-          echo "URL: $URL" | tee -a $GITHUB_STEP_SUMMARY
-          echo "$URL" | grep -Eq '^https://[a-z0-9-]+\.trycloudflare\.com$' || { echo "bad url: $URL"; cat cf.log server.log; exit 1; }
+          echo "$URL" | grep -Eq '^https://[a-z0-9-]+\.trycloudflare\.com$' || { echo "no tunnel url"; exit 1; }
+          echo "::add-mask::$URL"
           OK=0
           for i in $(seq 1 30); do
             CODE=$(curl -s -o /dev/null -m 5 -w '%{http_code}' "$URL/" || true)
-            echo "ping $i: $CODE"
             if [ "$CODE" != "000" ] && [ "$CODE" -lt 500 ]; then OK=1; break; fi
             sleep 3
           done
-          if [ "$OK" != 1 ]; then echo "unreachable"; cat cf.log server.log; exit 1; fi
-          echo "REACHABLE: $URL" | tee -a $GITHUB_STEP_SUMMARY
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -B tunnel
+          [ "$OK" = 1 ] || { echo "unreachable"; exit 1; }
+          mkdir -p "$HOME/tun" && cd "$HOME/tun"
+          git init -q -b tunnel; gitauth
           echo "{\"url\":\"$URL\",\"ts\":$(date +%s)}" > tunnel.json
-          git add tunnel.json
-          git commit -m "tunnel: $URL" || true
-          git push -u origin tunnel --force
-          echo "PUBLISHED tunnel to branch tunnel" | tee -a $GITHUB_STEP_SUMMARY
+          git add tunnel.json; git commit -qm tunnel
+          git push -q -u origin tunnel --force
+          echo "PUBLISHED"
       - name: Keep alive (5h)
         run: sleep 18000
       - name: Save workspace
@@ -76,4 +74,4 @@ jobs:
         run: |
           cd "$HOME/workspace" 2>/dev/null || exit 0
           git add -A
-          git diff --cached --quiet || { git commit -qm "save on shutdown"; git push -q origin workspace || true; }
+          git diff --cached --quiet || { git commit -qm "save on shutdown"; git push -q origin main || true; }

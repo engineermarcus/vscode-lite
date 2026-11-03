@@ -6,10 +6,10 @@ const USER_KEY = 'gh_user';
 
 // Tokens from a previous client ID (old GitHub App) can't dispatch workflows: drop them once
 try {
-  if (localStorage.getItem('gh_client') !== CLIENT_ID) {
+  if (localStorage.getItem('gh_client') !== CLIENT_ID + ':repo') {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
-    localStorage.setItem('gh_client', CLIENT_ID);
+    localStorage.setItem('gh_client', CLIENT_ID + ':repo');
   }
 } catch {}
 const native = Capacitor.isNativePlatform();
@@ -161,7 +161,7 @@ export function login(promptMsg = '', opts = {}) {
       try {
         const d = await postOAuth('/login/device/code', {
           client_id: CLIENT_ID,
-          scope: 'public_repo workflow',
+          scope: 'repo workflow',
         });
         if (!d.user_code) throw new Error(d.error_description || d.error || 'Device code request failed');
 
