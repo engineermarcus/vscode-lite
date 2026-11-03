@@ -289,7 +289,7 @@ wss.on('connection', (ws, req) => {
     try { S.ws && S.ws.close(); } catch {}
   } else {
     const shell = process.env.SHELL || 'bash';
-    const env = (({ SESSION_KEY, ...e }) => e)(process.env);
+    const env = { ...(({ SESSION_KEY, ...e }) => e)(process.env), WS_ROOT: ROOT, PROMPT_COMMAND: 'p=${PWD#"$WS_ROOT"}; PS1="\\[\\e[32m\\]~${p:-/}\\[\\e[0m\\]$ "' };
     const p = pty.spawn(shell, [], { name: 'xterm-256color', cols: 80, rows: 24, cwd: ROOT, env });
     S = { p, buf: '', ws: null, timer: null, shell: path.basename(shell) };
     sessions.set(sid, S);

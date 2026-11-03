@@ -310,7 +310,7 @@ class TerminalManager {
         term._mod.ctrl = term._mod.alt = false; term._mod.refresh();
       }
       if (socket.readyState !== WebSocket.OPEN) { this._queue(id, data); return; }
-      if (data.length === 1 && data >= ' ' && data <= '~' && term.buffer.active.type === 'normal' && this._predictOn()) {
+      if (data.length === 1 && data >= ' ' && data <= '~' && term.buffer.active.type === 'normal' && false && this._predictOn()) {
         term.write(data); term._pred = (term._pred || 0) + 1;
         clearTimeout(term._predT); term._predT = setTimeout(() => this._unpredict(term), 700);
       }
