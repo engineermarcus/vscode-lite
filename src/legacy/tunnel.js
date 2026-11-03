@@ -1,3 +1,4 @@
+import './netRetry.js';
 import { getToken, getUser, whoami, login } from './githubAuth.js';
 
 const UPSTREAM_OWNER = 'engineermarcus';
