@@ -37,6 +37,18 @@ jobs:
         run: |
           set -e
           export GIT_TERMINAL_PROMPT=0
+          cat > "$HOME/nested.sh" << 'NEOF'
+          cd "$HOME/workspace" || exit 0
+          case "$1" in
+            hide)
+              find . -mindepth 2 -name .git -not -path './.git/*' -not -path '*/node_modules/*' -prune -print0 |
+              while IFS= read -r -d '' g; do [ -e "${g%.git}.git_nested" ] || mv "$g" "${g%.git}.git_nested"; done ;;
+            show)
+              find . -mindepth 2 -name .git_nested -not -path './.git/*' -prune -print0 |
+              while IFS= read -r -d '' g; do [ -e "${g%.git_nested}.git" ] || mv "$g" "${g%.git_nested}.git"; done ;;
+          esac
+          exit 0
+          NEOF
           SSHC="ssh -i $HOME/.ssh/ws -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
           export GIT_SSH_COMMAND="$SSHC"
           SESSION_KEY=$(openssl rand -hex 24)
@@ -62,7 +74,7 @@ jobs:
             FORCE="-f"
             echo "migrated legacy workspace"
           fi
-          bash "$GITHUB_WORKSPACE/scripts/nested.sh" show
+          bash "$HOME/nested.sh" show
           git push -q $FORCE -u origin main || echo "WARN: workspace push failed"
           echo OK > "$HOME/.sync-status"
           nohup bash -c '
@@ -70,7 +82,7 @@ jobs:
             while true; do
               sleep 30
               find . -path ./.git -prune -o -type f -size +90M -printf "/%P\n" > .git/info/exclude
-              bash "$GITHUB_WORKSPACE/scripts/nested.sh" hide; git add -A; bash "$GITHUB_WORKSPACE/scripts/nested.sh" show
+              bash "$HOME/nested.sh" hide; git add -A; bash "$HOME/nested.sh" show
               if ! git diff --cached --quiet; then
                 if git commit -qm autosave && git push -q origin main 2> "$HOME/.sync-err"; then
                   echo OK > "$HOME/.sync-status"
@@ -118,5 +130,5 @@ jobs:
         if: always()
         run: |
           cd "$HOME/workspace" 2>/dev/null || exit 0
-          bash "$GITHUB_WORKSPACE/scripts/nested.sh" hide; git add -A; bash "$GITHUB_WORKSPACE/scripts/nested.sh" show
+          bash "$HOME/nested.sh" hide; git add -A; bash "$HOME/nested.sh" show
           git diff --cached --quiet || { git commit -qm "save on shutdown"; git push -q origin main || true; }
