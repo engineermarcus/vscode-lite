@@ -4,24 +4,24 @@ import { getToken, getUser, whoami, login, logout } from './githubAuth.js';
 const container = document.createElement('div');
 container.id = 'shell-connect-container';
 container.style.cssText =
-  'position:fixed;right:12px;bottom:12px;z-index:99999;display:flex;align-items:center;gap:6px;' +
-  'background:#252526;border:1px solid #3c3c3c;border-radius:20px;padding:3px 6px;box-shadow:0 4px 12px rgba(0,0,0,0.4);';
+  'position:fixed;left:56px;bottom:48px;z-index:99999;display:none;flex-direction:column;align-items:stretch;gap:8px;' +
+  'background:var(--bg-touchbar);border:1px solid var(--border-color);border-radius:8px;padding:10px;box-shadow:0 4px 12px rgba(0,0,0,0.4);';
 
 const btn = document.createElement('button');
 btn.id = 'shell-connect-btn';
 btn.style.cssText =
   'padding:6px 12px;border:0;border-radius:14px;font:12px system-ui,-apple-system,sans-serif;' +
-  'color:#fff;background:#333;cursor:pointer;outline:none;display:flex;align-items:center;gap:6px;transition:background 0.2s;';
+  'color:var(--text-bright);background:var(--bg-input);cursor:pointer;outline:none;display:flex;align-items:center;gap:6px;transition:background 0.2s;';
 
 const userBadge = document.createElement('button');
 userBadge.id = 'shell-user-btn';
 userBadge.title = 'GitHub Account';
 userBadge.style.cssText =
   'padding:4px 8px;border:0;border-radius:12px;font:11px system-ui,-apple-system,sans-serif;' +
-  'color:#aaa;background:transparent;cursor:pointer;display:none;align-items:center;gap:5px;';
+  'color:var(--text-bright);background:transparent;cursor:pointer;display:none;align-items:center;gap:5px;';
 
 let hidden = false;
-try { hidden = localStorage.getItem('shell_pill_hidden') === '1'; } catch {}
+hidden = false;
 
 const toggle = document.createElement('button');
 toggle.id = 'shell-pill-toggle';
@@ -49,7 +49,7 @@ function applyHidden() {
   }
 }
 
-container.appendChild(toggle);
+
 container.appendChild(btn);
 container.appendChild(userBadge);
 
@@ -64,7 +64,9 @@ const setStatus = (text, bg, clickable = true) => {
 };
 
 function updateUI() {
-  container.style.display = getToken() ? 'flex' : 'none';
+  container.style.display = (getToken() && open) ? 'flex' : 'none';
+  profile.style.display = getToken() ? 'flex' : 'none';
+  refreshProfile();
   const user = getUser();
   const token = getToken();
 
@@ -77,7 +79,7 @@ function updateUI() {
     userBadge.onclick = (e) => {
       e.stopPropagation();
       if (confirm(`Signed in as @${user.login}.\n\nDo you want to sign out?`)) {
-        setStatus('Stopping shell...', '#555', false);
+        setStatus('Stopping shell...', 'var(--bg-input)', false);
         stopShell((m) => log(m)).catch(() => {}).finally(() => logout());
       }
     };
@@ -90,7 +92,7 @@ function updateUI() {
   } else if (!token) {
     setStatus('Sign in with GitHub', '#0e639c');
   } else {
-    setStatus('○ Connect shell', '#444');
+    setStatus('○ Connect shell', 'var(--bg-input)');
   }
   applyHidden();
 }
@@ -98,7 +100,7 @@ function updateUI() {
 btn.onclick = async () => {
   if (busy) return;
   busy = true;
-  setStatus('Connecting...', '#555', false);
+  setStatus('Connecting...', 'var(--bg-input)', false);
 
   try {
     if (!getToken()) {
@@ -124,8 +126,40 @@ btn.onclick = async () => {
   btn.disabled = false;
 };
 
-document.body.appendChild(container);
-setStatus('...', '#444', false);
+let open = false;
+const profile = document.createElement('div');
+profile.id = 'btn-profile';
+profile.className = 'activity-item';
+profile.title = 'Account & shell';
+profile.style.cssText = 'position:relative;display:none;';
+const avatar = document.createElement('span');
+avatar.style.cssText = 'display:flex;align-items:center;justify-content:center;';
+const dot = document.createElement('span');
+dot.style.cssText = 'position:absolute;right:9px;bottom:9px;width:9px;height:9px;border-radius:50%;border:2px solid var(--bg-touchbar);background:#888;';
+profile.appendChild(avatar);
+profile.appendChild(dot);
+profile.onclick = (e) => { e.stopPropagation(); open = !open; updateUI(); };
+document.addEventListener('click', (e) => {
+  if (open && !container.contains(e.target)) { open = false; updateUI(); }
+});
+function refreshProfile() {
+  const u = getUser();
+  avatar.innerHTML = u && u.avatar_url
+    ? `<img src="${u.avatar_url}" style="width:24px;height:24px;border-radius:50%;" />`
+    : '<i class="codicon codicon-account"></i>';
+  dot.style.background = getBase().tunnel ? '#3fb950' : '#888';
+}
+function mountProfile() {
+  const gear = document.getElementById('btn-settings');
+  if (!gear) return false;
+  gear.parentNode.insertBefore(profile, gear);
+  document.body.appendChild(container);
+  return true;
+}
+if (!mountProfile()) {
+  const t = setInterval(() => { if (mountProfile()) clearInterval(t); }, 200);
+}
+setStatus('...', 'var(--bg-input)', false);
 
 // Check current user if token exists
 if (getToken()) {
