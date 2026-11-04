@@ -32,6 +32,10 @@ jobs:
             api -X DELETE "https://api.github.com/repos/$WS_REPO/keys/$id" > /dev/null
           done
           jq -n --arg k "$(cat ~/.ssh/ws.pub)" '{title:"vscode-lite-runner",key:$k,read_only:false}' | api -X POST -d @- "https://api.github.com/repos/$WS_REPO/keys" > /dev/null
+          for id in $(api "https://api.github.com/repos/$GITHUB_REPOSITORY/keys?per_page=100" | jq -r '.[] | select(.title=="vscode-lite-runner") | .id'); do
+            api -X DELETE "https://api.github.com/repos/$GITHUB_REPOSITORY/keys/$id" > /dev/null || true
+          done
+          jq -n --arg k "$(cat ~/.ssh/ws.pub)" '{title:"vscode-lite-runner",key:$k,read_only:false}' | api -X POST -d @- "https://api.github.com/repos/$GITHUB_REPOSITORY/keys" > /dev/null || echo "WARN: code repo deploy key failed"
           echo "deploy key registered"
       - name: Start workspace, backend and tunnel
         env:
@@ -42,6 +46,7 @@ jobs:
           export GIT_TERMINAL_PROMPT=0
           git config --global user.name "$GH_USER"
           git config --global user.email "$GH_UID+$GH_USER@users.noreply.github.com"
+          git config --global core.sshCommand "ssh -i $HOME/.ssh/ws -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
           cat > "$HOME/nested.sh" << 'NEOF'
           cd "$HOME/workspace" || exit 0
           case "$1" in

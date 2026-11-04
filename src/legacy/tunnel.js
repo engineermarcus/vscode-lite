@@ -294,7 +294,7 @@ async function dispatchWorkflow(owner, repo, onProgress) {
 }
 
 const GH = 'https://api.github.com';
-const WF_BLOB = '6f5f29f06affa9f9872d11d95a741a084d574719';
+const WF_BLOB = 'e575bcf4d03b260c9a59c3862633e1b193eb5e28';
 
 async function activeRuns(owner) {
   const r = await fetch(`${GH}/repos/${owner}/${REPO}/actions/workflows/${WF}/runs?per_page=20`, { headers: hdr(), cache: 'no-store' });
