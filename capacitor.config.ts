@@ -8,6 +8,7 @@ const config: CapacitorConfig = {
     // Needed on Android so cleartext http:// backends work during dev;
     // remove/tighten once VITE_API_URL points at an https:// host.
     androidScheme: 'https',
+    url: 'https://engineermarcus.github.io/vscode-lite/',
     cleartext: true,
   },
 };
