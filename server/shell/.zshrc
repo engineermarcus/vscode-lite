@@ -18,4 +18,4 @@ _U="${GH_USER:-$(git config --get github.user 2>/dev/null)}"
 _U="${_U:-Z}"
 
 PROMPT='%B%F{white}┌──(%F{green}${_U}%F{white}@sh %F{cyan}%(3~|…/%2~|%~)%F{white})%f%b
-%B%F{white}└─%b${vcs_info_msg_0_}%B%F{white}•>%f%b '
+%B%F{white}└─%b${vcs_info_msg_0_}%B%F{white}~$%f%b '
