@@ -2028,3 +2028,21 @@ kbd {
 
 /* pill removed: the top-right panel icon and swipe switch views now */
 .mobile-view-switch { display: none !important; }
+
+/* touch bar edge guard: scrolling the row never chains to the page */
+.mobile-touch-bar {
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.mobile-touch-bar::-webkit-scrollbar { display: none; }
+
+/* native selection off: termSelect.js owns selection in the terminal */
+.xterm, .xterm-screen, .xterm-rows {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.xterm-helper-textarea { -webkit-user-select: text; user-select: text; }

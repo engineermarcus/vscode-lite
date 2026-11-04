@@ -2371,3 +2371,24 @@ document.addEventListener('click', (e) => {
   document.getElementById(showingTerminal ? 'btn-mobile-view-editor' : 'btn-mobile-view-terminal')?.click();
   icon.classList.toggle('active', !showingTerminal);
 }, true);
+
+// ---- touch bar swipe guard ----
+(() => {
+  let fromBar = false, sx = 0;
+  document.addEventListener('touchstart', (e) => {
+    fromBar = !!(e.target.closest && e.target.closest('.mobile-touch-bar'));
+    sx = e.touches[0] ? e.touches[0].clientX : 0;
+  }, { capture: true, passive: true });
+  document.addEventListener('touchend', (e) => {
+    if (!fromBar) return;
+    fromBar = false;
+    const t = e.changedTouches[0];
+    // a horizontal drag that began on the bar is a scroll, not a view swipe
+    if (t && Math.abs(t.clientX - sx) > 10) e.stopPropagation();
+  }, { capture: true, passive: true });
+})();
+
+// ---- block native terminal menu ----
+document.addEventListener('contextmenu', (e) => {
+  if (e.target.closest && e.target.closest('.xterm, #terminal-container')) e.preventDefault();
+}, true);

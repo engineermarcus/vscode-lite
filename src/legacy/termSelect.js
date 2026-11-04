@@ -156,5 +156,54 @@ export function attachTermSelect(term, host) {
     if (longp) { e.stopPropagation(); longp = false; return; }
     if (term.hasSelection()) { term.clearSelection(); hide(); }
   }, { capture: true });
+  // ---- selection handles (char precision, finger offset) ----
+  const mkHandle = () => {
+    const h = document.createElement('div');
+    h.style.cssText = 'position:fixed;z-index:99998;width:30px;height:30px;margin:0 0 0 -15px;border-radius:50%;background:#2563eb;border:3px solid #fff;display:none;touch-action:none;box-shadow:0 2px 6px #0008';
+    document.body.appendChild(h);
+    return h;
+  };
+  const hStart = mkHandle(), hEnd = mkHandle();
+  const OFFSET = 28;
+  const cellXY = (i, atEnd) => {
+    const r = screen(), w = r.width / term.cols, ch = r.height / term.rows;
+    const row = Math.floor(i / term.cols) - term.buffer.active.viewportY;
+    const col = i % term.cols;
+    return { x: r.left + (col + (atEnd ? 1 : 0)) * w, y: r.top + (row + 1) * ch, row };
+  };
+  const range = () => {
+    const p = term.getSelectionPosition();
+    if (!p || !term.hasSelection()) return null;
+    return [p.start.y * term.cols + p.start.x, p.end.y * term.cols + p.end.x - 1];
+  };
+  const placeHandles = () => {
+    const rg = range();
+    if (!rg) { hStart.style.display = hEnd.style.display = 'none'; return; }
+    const a = cellXY(rg[0], false), b = cellXY(rg[1], true);
+    const rows = term.rows;
+    hStart.style.display = a.row >= 0 && a.row < rows ? 'block' : 'none';
+    hEnd.style.display = b.row >= 0 && b.row < rows ? 'block' : 'none';
+    hStart.style.left = a.x + 'px'; hStart.style.top = a.y + 'px';
+    hEnd.style.left = b.x + 'px'; hEnd.style.top = b.y + 'px';
+  };
+  const wireHandle = (h, isStart) => {
+    let fixed = 0;
+    h.addEventListener('touchstart', (e) => {
+      const rg = range(); if (!rg) return;
+      fixed = isStart ? rg[1] : rg[0];
+      e.preventDefault(); e.stopPropagation();
+    }, { passive: false });
+    h.addEventListener('touchmove', (e) => {
+      const t = e.touches[0];
+      const p = idx(t.clientX, t.clientY - OFFSET);
+      sel(Math.min(p, fixed), Math.max(p, fixed));
+      e.preventDefault(); e.stopPropagation();
+    }, { passive: false });
+  };
+  wireHandle(hStart, true); wireHandle(hEnd, false);
+  term.onSelectionChange(placeHandles);
+  term.onScroll(placeHandles);
+  term.onResize(placeHandles);
+
   return api;
 }
