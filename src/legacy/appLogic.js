@@ -2392,3 +2392,62 @@ document.addEventListener('click', (e) => {
 document.addEventListener('contextmenu', (e) => {
   if (e.target.closest && e.target.closest('.xterm, #terminal-container')) e.preventDefault();
 }, true);
+
+// ---- editor clipboard keys ----
+(() => {
+  const ed = () => window.monaco?.editor?.getEditors?.().find(e => e.hasTextFocus?.()) || window.monaco?.editor?.getEditors?.()[0];
+  const clip = async (t) => {
+    try { await navigator.clipboard.writeText(t); }
+    catch {
+      const ta = document.createElement('textarea');
+      ta.value = t; ta.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+    }
+  };
+  const selText = (e) => {
+    const m = e.getModel(), s = e.getSelection();
+    return m && s && !s.isEmpty() ? m.getValueInRange(s) : '';
+  };
+  const ACTIONS = {
+    all: (e) => { e.setSelection(e.getModel().getFullModelRange()); },
+    copy: async (e) => { const t = selText(e); if (t) await clip(t); },
+    cut: async (e) => {
+      const t = selText(e); if (!t) return;
+      await clip(t);
+      e.executeEdits('kb', [{ range: e.getSelection(), text: '', forceMoveMarkers: true }]);
+    },
+    paste: async (e) => {
+      let t = '';
+      try { t = await navigator.clipboard.readText(); } catch { t = window.prompt('Paste here') || ''; }
+      if (t) e.executeEdits('kb', [{ range: e.getSelection(), text: t, forceMoveMarkers: true }]);
+    },
+    undo: (e) => { e.trigger('kb', 'undo'); },
+    redo: (e) => { e.trigger('kb', 'redo'); },
+  };
+  const LABELS = [['all', 'Select All'], ['copy', 'Copy'], ['cut', 'Cut'], ['paste', 'Paste'], ['undo', 'Undo'], ['redo', 'Redo']];
+
+  const mount = () => {
+    const bar = document.getElementById('mobile-touch-bar-editor');
+    if (!bar) return false;
+    if (bar.dataset.clipKeys) return true;
+    bar.dataset.clipKeys = '1';
+    const first = bar.firstChild;
+    LABELS.forEach(([k, label]) => {
+      const b = document.createElement('button');
+      b.className = 'touch-key';
+      b.dataset.ed = k;
+      b.textContent = label;
+      b.addEventListener('pointerdown', (ev) => ev.preventDefault());
+      b.addEventListener('click', async (ev) => {
+        ev.preventDefault();
+        const e = ed();
+        if (!e) { console.warn('[clipkeys] Monaco editor instance not found'); return; }
+        await ACTIONS[k](e);
+        e.focus();
+      });
+      bar.insertBefore(b, first);
+    });
+    return true;
+  };
+  const t = setInterval(() => { if (mount()) clearInterval(t); }, 300);
+})();

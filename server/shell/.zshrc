@@ -2,7 +2,7 @@ export LANG=C.UTF-8 LC_ALL=C.UTF-8
 
 HISTFILE=~/.zsh_history; HISTSIZE=5000; SAVEHIST=5000
 setopt AUTO_CD HIST_IGNORE_DUPS SHARE_HISTORY PROMPT_SUBST
-autoload -Uz compinit && compinit -q
+autoload -Uz compinit && compinit -u -q
 
 alias ll='ls -alF' la='ls -A' l='ls -CF'
 
