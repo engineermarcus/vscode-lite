@@ -60,7 +60,17 @@ export async function whoami() {
       },
     });
     if (!r.ok) {
-      if (r.status === 401) logout();
+      if (r.status === 401) {
+        // confirm once before dropping the session, and record why
+        await sleep(1500);
+        const r2 = await fetch('https://api.github.com/user', {
+          headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' },
+        }).catch(() => null);
+        if (r2 && r2.status === 401) {
+          try { localStorage.setItem('gh_logout_reason', '401 at ' + new Date().toISOString()); } catch {}
+          logout();
+        }
+      }
       return null;
     }
     const data = await r.json();
@@ -221,3 +231,6 @@ export function login(promptMsg = '', opts = {}) {
     };
   });
 }
+
+// ask the browser not to evict our storage (keeps the sign-in)
+try { navigator.storage?.persist?.(); } catch {}
