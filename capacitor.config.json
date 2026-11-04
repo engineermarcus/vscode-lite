@@ -5,6 +5,6 @@
   "server": {
     "androidScheme": "https",
     "cleartext": true,
-    "url": "https://engineermarcus.github.io/vscode-lite/"
+    "url": "https://engineermarcus.github.io/vscode-lite/app/"
   }
 }

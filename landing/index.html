@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VS Code Lite</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #0d1117; color: #e6edf3; font: 16px/1.5 system-ui, sans-serif; text-align: center; padding: 24px; box-sizing: border-box; }
+  main { max-width: 360px; }
+  h1 { font-size: 28px; margin: 0 0 8px; }
+  p { color: #9da5b4; margin: 0 0 24px; }
+  a.btn { display: inline-block; padding: 16px 32px; border-radius: 28px; background: #7c6cff; color: #fff; font-weight: 600; text-decoration: none; }
+  small { display: block; margin-top: 20px; color: #7d8590; }
+</style>
+</head>
+<body>
+<main>
+  <h1>VS Code Lite</h1>
+  <p>A code editor and cloud shell for your phone.</p>
+  <a class="btn" id="dl" href="https://github.com/engineermarcus/vscode-lite/releases/latest/download/vscode-lite.apk">Download app</a>
+  <small id="ver">Android APK</small>
+  <small>After downloading, allow installs from your browser if Android asks.</small>
+</main>
+<script>
+  fetch('https://api.github.com/repos/engineermarcus/vscode-lite/releases/latest')
+    .then(r => r.ok ? r.json() : null)
+    .then(d => { if (d && d.tag_name) document.getElementById('ver').textContent = 'Android APK · ' + d.tag_name; })
+    .catch(() => {});
+</script>
+</body>
+</html>

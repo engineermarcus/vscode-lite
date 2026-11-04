@@ -37,14 +37,20 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          BASE_URL: /vscode-lite/
+          BASE_URL: /vscode-lite/app/
           VITE_API_URL: https://rtgcortex-vscode-lite.hf.space
           VITE_WS_URL: wss://rtgcortex-vscode-lite.hf.space
+
+      - name: Assemble site
+        run: |
+          mkdir -p site/app
+          cp -r dist/. site/app/
+          cp landing/index.html site/index.html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist
+          path: ./site
 
   deploy:
     environment:
