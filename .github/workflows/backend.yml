@@ -36,9 +36,12 @@ jobs:
       - name: Start workspace, backend and tunnel
         env:
           GH_USER: ${{ github.repository_owner }}
+          GH_UID: ${{ github.repository_owner_id }}
         run: |
           set -e
           export GIT_TERMINAL_PROMPT=0
+          git config --global user.name "$GH_USER"
+          git config --global user.email "$GH_UID+$GH_USER@users.noreply.github.com"
           cat > "$HOME/nested.sh" << 'NEOF'
           cd "$HOME/workspace" || exit 0
           case "$1" in
