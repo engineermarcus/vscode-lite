@@ -1876,7 +1876,7 @@ export async function bootApp() {
       if (e.touches.length !== 1) return;
       touchStartX = e.touches[0].clientX;
       touchStartY = e.touches[0].clientY;
-      touchTracking = true;
+      touchTracking = false; /* swipe disabled */
     }, { passive: true });
 
     workbenchBody.addEventListener("touchend", (e) => {
