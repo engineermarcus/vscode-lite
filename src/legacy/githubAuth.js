@@ -68,7 +68,7 @@ export async function whoami() {
         }).catch(() => null);
         if (r2 && r2.status === 401) {
           try { localStorage.setItem('gh_logout_reason', '401 at ' + new Date().toISOString()); } catch {}
-          logout();
+          // kept token on 401: see gh_logout_reason
         }
       }
       return null;

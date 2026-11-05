@@ -278,7 +278,7 @@ setInterval(() => {
   }
 }, 20000).unref();
 const MAXBUF = 200000;
-const IDLE_MS = 30 * 60 * 1000;
+const IDLE_MS = 12 * 60 * 60 * 1000;
 wss.on('connection', (ws, req) => {
   const sid = new URL(req.url, 'http://x').searchParams.get('s') || '';
   if (!/^[\w-]{1,80}$/.test(sid)) return ws.close();
