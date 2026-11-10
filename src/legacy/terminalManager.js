@@ -304,6 +304,12 @@ class TerminalManager {
 
     if (term._dD) term._dD.dispose();
     term._dD = term.onData((data) => {
+      if (term._mod && term._mod.shift) {
+        if (data === '\t') data = '\x1b[Z';
+        else if (/^\x1b[\[O][ABCD]$/.test(data)) data = '\x1b[1;2' + data[2];
+        else if (data.length === 1) data = data.toUpperCase();
+        term._mod.shift = false; term._mod.refresh();
+      }
       if (term._mod && data.length === 1 && (term._mod.ctrl || term._mod.alt)) {
         if (term._mod.ctrl) { const c = data.toUpperCase().charCodeAt(0); if (c >= 64 && c <= 95) data = String.fromCharCode(c - 64); }
         if (term._mod.alt) data = '\x1b' + data;

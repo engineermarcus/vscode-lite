@@ -406,7 +406,7 @@ export async function ensureTunnel(onProgress) {
 
   const user = await whoami();
   if (!user?.login) {
-    throw new Error('Unable to verify GitHub account.');
+    throw new Error(getToken() ? 'Unable to verify GitHub account. Check your connection and retry.' : 'Session expired. Please sign in again.');
   }
   owner = user.login;
 

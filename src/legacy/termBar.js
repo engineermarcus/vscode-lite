@@ -6,8 +6,9 @@ export function buildTermBar(term, api) {
   const send = (d) => (term.input ? term.input(d, true) : term.paste(d));
   const btns = {};
   const mod = (term._mod = {
-    ctrl: false, alt: false,
+    ctrl: false, alt: false, shift: false,
     refresh() {
+      if (btns.shift) btns.shift.style.background = mod.shift ? 'var(--accent-color)' : 'var(--bg-input)';
       if (btns.ctrl) btns.ctrl.style.background = mod.ctrl ? 'var(--accent-color)' : 'var(--bg-input)';
       if (btns.alt) btns.alt.style.background = mod.alt ? 'var(--accent-color)' : 'var(--bg-input)';
     },
@@ -20,6 +21,7 @@ export function buildTermBar(term, api) {
     ['Tab', () => send('\t')],
     ['Ctrl', () => { mod.ctrl = !mod.ctrl; mod.refresh(); }, 0, 'ctrl'],
     ['Alt', () => { mod.alt = !mod.alt; mod.refresh(); }, 0, 'alt'],
+    ['Shift', () => { mod.shift = !mod.shift; mod.refresh(); }, 0, 'shift'],
     ['←', arrow('D'), 1], ['↓', arrow('B'), 1], ['↑', arrow('A'), 1], ['→', arrow('C'), 1],
     ['Home', () => send('\x1b[H')], ['End', () => send('\x1b[F')],
     ['PgUp', () => send('\x1b[5~'), 1], ['PgDn', () => send('\x1b[6~'), 1],
